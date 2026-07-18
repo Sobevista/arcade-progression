@@ -655,6 +655,168 @@ the product.
 
 ---
 
+## Rung 7 — NES (Nintendo, 1985–92) — the governance era
+
+Dug 2026-07-18 evening, before any code — and before the game has a name. The ruling
+(Daniel, this session): SMB-class mechanics re-derived from the public record, with
+**all expression original** — an Exodus-themed platformer, original title, levels, art,
+and characters (legal posture and tone guard in UX-34). Two digs this time: the machine,
+and **the gate around the machine**. On this rung the gate is the bigger story — and it
+is the reason the theme ruling exists at all.
+
+*(Stamp note, recorded honestly: the rung-6 entries above say "2026-07-19"; the actual
+commit clocks read 2026-07-18 afternoon. The drift is noted, not rewritten.)*
+
+### The machine
+
+| | |
+|---|---|
+| CPU | Ricoh 2A03 — a 6502 core with BCD disabled, ~1.79 MHz, with the APU, rudimentary DMA, and controller polling on the same die ([Wikipedia](https://en.wikipedia.org/wiki/Ricoh_2A03), [NESdev](https://www.nesdev.org/wiki/2A03)) |
+| RAM | **2 KB** of CPU SRAM; zero page + stack are architecture-dictated slices of it ([Copetti](https://www.copetti.org/writings/consoles/nes/)) |
+| PPU | 256×240 output; 2 KB of video RAM = **two physical nametables**; the background scrolls in 1-pixel steps but all tiles move together ([Famicom Party](https://famicom.party/book/09-theppu/)); 64 sprites, **hard limit 8 per scanline** ([NESdev PPU OAM](https://www.nesdev.org/wiki/PPU_OAM)); colour assigned per **16×16-pixel region** via attribute tables ([NESdev](https://www.nesdev.org/wiki/PPU_attribute_tables)) — the reason NES art looks the way it does |
+| Cartridge | NROM — no mapper. Super Mario Bros. is **32 KB PRG + 8 KB CHR = 40 KB total**: engine, 32 levels, all art, all music ([NESdev NROM](https://www.nesdev.org/wiki/NROM), [HN](https://news.ycombinator.com/item?id=21213840)) |
+| Sound | APU on the CPU die: 2 pulse channels, triangle, noise, and a DPCM sample channel |
+| Lockout | **10NES** — a lock-and-key CIC chip pair; the console refuses any cartridge that can't complete the handshake ([Atari v. Nintendo](https://en.wikipedia.org/wiki/Atari_Games_Corp._v._Nintendo_of_America_Inc.)) |
+| The record | **The anti-A-9 machine.** SMB's complete commented disassembly is public ([6502disassembly.com](https://6502disassembly.com/nes-smb/SuperMarioBros.html)) — every physics constant is readable. Breakout's ball speed genuinely doesn't exist; Mario's is a number in a file |
+
+### Finding 1 — the gate: platform governance is a constraint class (A-25)
+
+The NES is the first machine in our ladder with a **gatekeeper burned into the silicon**.
+The 10NES chip pair meant Nintendo, not the market, decided who could ship a cartridge —
+backed by a licensing regime (fees, content rules, quantity control). What happened at
+the gate is the whole era in miniature:
+
+- **Tengen (Atari Games)** couldn't reverse-engineer the chip, so its lawyers obtained
+  the 10NES source from the **US Copyright Office by falsely claiming pending
+  litigation**, and built the "Rabbit" chip from it — producing signals indistinguishable
+  from the real key. The Federal Circuit held that the ill-gotten copy poisoned their
+  fair-use defence; Atari settled and paid ([case](https://en.wikipedia.org/wiki/Atari_Games_Corp._v._Nintendo_of_America_Inc.),
+  [MIT Press Reader](https://thereader.mitpress.mit.edu/how-nintendo-bled-atari-games-to-death/)).
+- **Color Dreams** defeated the chip *legally* — a voltage spike at power-on stuns it —
+  so Nintendo's enforcement **migrated to the retail layer**: pressure on stores that
+  stocked unlicensed carts ([Wikipedia](https://en.wikipedia.org/wiki/Wisdom_Tree)).
+- Color Dreams' answer, 1990: **Wisdom Tree** — Christian games sold through
+  **Christian bookstores**, a channel Nintendo had no leverage over. Bible Adventures
+  sold ~**350,000 copies** there ([Wikipedia](https://en.wikipedia.org/wiki/Bible_Adventures)).
+
+**The transferable lesson (A-25):** a gate does not eliminate the market it excludes —
+it **reroutes** it. Enforcement migrates to whatever layer is cheapest to pressure (the
+courtroom, the retail buyer), and the excluded market forms exactly where that pressure
+cannot reach. The constraint-class ladder completes: hardware (rung 2) → manufacturing
+(3) → business model (3/4) → law (6) → **platform governance** (7). We still live under
+this one's descendants: every app store is a 10NES with a legal department.
+
+### Finding 2 — 40 KB: levels are object streams, and the camera guards the encoding (A-26)
+
+SMB's level data is not a tile grid. It is a stream of **~2-byte objects**: 4-bit X and
+4-bit Y on a 16×16 grid (page-relative), a 7-bit object type, and a 1-bit new-page flag
+([NESdev forum](https://forums.nesdev.org/viewtopic.php?t=16220),
+[Matt's Ramblings](https://matthewearl.github.io/2018/06/28/smb-level-extractor/)).
+Levels are decoded forward as the camera advances and **discarded behind it** — and the
+famous forward-only camera is what makes stream-and-discard safe: nothing behind you can
+ever need rebuilding. (That the memory budget *motivated* the camera rule is not on
+record from the designers — the coupling is structural, and tagged **[ASSUMED as motive,
+verified as mechanism]**.)
+
+*Sourced aside — what living at this seam cost:* the **Minus World**. A wall-clip (a
+physics edge case) reaches the 1-2 warp zone before the trigger scroll initializes its
+pipe-destination data, so the pipes read the **stale default table (36-5-36)** and send
+the player to a world that was never authored ([Wikipedia](https://en.wikipedia.org/wiki/Minus_World),
+[Mario Wiki](https://www.mariowiki.com/Minus_World)). The most famous glitch in video
+games is **two half-bugs composing**: an initialization-order assumption made reachable
+by a collision edge case.
+
+**The transferable lesson (A-26):** when memory forces an encoding, the encoding writes
+design rules — and every assumption it makes ("this data is initialized," "that region
+is gone") sits one physics edge case away from being player-observable. The positive
+half matters just as much: the 2-byte vocabulary made levels **cheap to author** — 32
+levels fit in the corner of 40 KB because the vocabulary existed. An encoding is a
+level-design *language*, and our scarce resource (authoring time, not ROM) wants the
+same language.
+
+### Finding 3 — game feel is a table of numbers (A-27)
+
+Mario's position runs at **16 subpixels per pixel** — fixed-point arithmetic on a chip
+with no floating point and no multiply instruction ([TASVideos](https://tasvideos.org/GameResources/NES/SuperMarioBros),
+[subpixel explainer](http://hcfyk.blogspot.com/2019/09/what-is-subpixel-in-super-mario-bros.html)).
+jdaster64's read of the code found **gravity that is piecewise velocity-dependent AND
+keyed to whether A is held** ([Physics Factbook](https://hypertextbook.com/facts/2007/mariogravity.shtml)) —
+the entire celebrated "feel" (momentum, skid, air control, variable jump) is a **small
+table of constants**, every one of them readable today in the public disassembly. Even
+the wall-ejection rule (pushed out opposite to your steering) is documented behaviour.
+
+**The transferable lesson (A-27):** "game feel" is authored numbers — deterministic,
+transcribable, testable — not emergent magic. The corollary is ours: fixed timestep and
+fixed-point-style arithmetic aren't retro cosplay, they are **what makes feel
+reproducible** — and therefore simmable. Floats plus variable dt make feel a moving
+target; INV-20 already caught the first symptom one rung early.
+
+### Finding 4 — input is a measurement, not a fact (A-28)
+
+On the NTSC NES, the DPCM sample channel's DMA can collide with a controller read: the
+pad's shift register sees an extra clock edge, **drops a bit, and reports a phantom
+press** — most often a spurious RIGHT. The standard fix in shipped games: **read the
+controller repeatedly until two reads agree**
+([NESdev](https://www.nesdev.org/wiki/Controller_reading)). The console's own hardware
+made input untrustworthy, and every game with sampled drums silently voted on the
+workaround.
+
+**The transferable lesson (A-28):** at a noisy boundary, the read is not the value —
+verification belongs *at the boundary*, once, not scattered through the logic. Modern
+costume: debouncing, networked input, any sensor. Our version: browser input (touch,
+key ghosting, backgrounded-tab throttling — rung 6's testing note already paid this
+toll) flows through one verified chokepoint.
+
+### Finding 5 — theme selects who shows up; mechanics decide whether they stay (A-29)
+
+Wisdom Tree's catalogue was **mechanically borrowed** — Bible Adventures is an SMB2-style
+engine reskinned with Noah, Baby Moses, and David & Goliath, built fast by a secular
+studio and widely panned as craft ([Wikipedia](https://en.wikipedia.org/wiki/Bible_Adventures),
+[Game Developer](https://www.gamedeveloper.com/production/wisdom-tree-lazy-uninspired-corporate-strategy-at-its-finest)).
+It sold 350,000 copies anyway, because the audience was **real and unserved**. The theme
+was a genuine distribution innovation (A-25); the craft debt was real too, and it is
+what the games are remembered for.
+
+**The transferable lesson (A-29):** an underserved audience forgives craft debt exactly
+once. Theme opens the door; mechanics keep people in the room. **This rung's thesis is
+the inversion:** six rungs of earned craft first, theme last — finish what they were too
+ill-funded to start properly.
+
+### Open / unverified
+
+- **Exact SMB physics constants.** The sources exist (jdaster64's table; the full
+  disassembly) but the values are **not yet transcribed** into this repo. Until the
+  transcription pass, any specific speed/gravity number is **[ASSUMED]**. Transcription
+  is a SCOPE task, not a research gap.
+- **Forward-only camera motive.** Mechanism verified (stream-and-discard); designer
+  intent **[ASSUMED]** — no primary testimony found.
+- **NES palette RGB values.** The PPU generated analog NTSC signal directly; every RGB
+  palette is a reconstruction — **kin of A-9**. We will pick one published palette and
+  tag it [ASSUMED].
+- **"No coyote time / jump buffering in 1985."** Community consensus, not yet verified
+  against the disassembly. **[ASSUMED until the transcription pass].**
+
+### Our Suffering Ledger for rung 7
+
+| Constraint | Verdict | Reasoning |
+|---|---|---|
+| Subpixel fixed-point physics, fixed timestep | **KEEP — the rung's technical heart** | A-27: feel that can be transcribed, verified, and simmed. Floats with variable dt is how feel drifts (INV-20) |
+| SMB's documented physics values as the starting table | **KEEP (once transcribed)** | The best-documented feel in game history; start from the master's numbers, retune for our game, record every divergence |
+| Object-stream level encoding (compact typed objects, not tile grids) | **KEEP** | A-26: the encoding is the level-design language, and it keeps authoring cheap — our scarce resource is authoring time, not ROM |
+| Forward-only camera | **KEEP for Phase 1** | The 1985 rule; teaches the streaming discipline. Re-pick if an Exodus set-piece genuinely needs backtracking |
+| NES palette + colour in 16×16 attribute regions | **KEEP** | The machine's own look on the machine's own rung (UX-29 precedent). The attribute constraint is what makes art read "NES" |
+| D-pad + two buttons; run is a **held** button | **KEEP** | The 1985 control vocabulary; held-B-to-run is load-bearing in the physics table |
+| APU-style audio (2 pulse + triangle + noise) | **KEEP the result** via WebAudio synthesis | Series ruling since rung 2: the sound matters, the silicon doesn't |
+| 8 sprites per scanline / flicker | **SKIP** | Tedium without a lesson for us; nothing in this design needs flicker as an overload telegraph. Recorded, not reproduced |
+| vblank cycle budget | **SKIP the cycles, KEEP a frame budget** | The discipline transfers as a measured frame-cost ceiling (rung 4 measured 0.93 ms; this rung will be heavier) |
+| Mappers / bank switching | **SKIP** | SMB itself is NROM — even the original didn't need one |
+| 6502 assembly | **SKIP** | Teaches 1985 toolchains, not game design (series ruling) |
+| 10NES lockout | **SKIP the chip, KEEP the finding** | A-25 is the trove entry — and we ship through its descendants (Pages today, app stores someday) with eyes open |
+| DPCM controller-read bug | **SKIP the bug, KEEP the scar** | Input verification at the boundary (A-28): one chokepoint reads input, everything else trusts it |
+| Coyote time / jump buffering (modern grace windows) | **INVERTED — 1985 had none** | Ship strict first; the family playtest decides. If added, it's a declared anachronism with tuned ms on the record (A-12 precedent) |
+
+---
+
 ## Running list of transferable lessons
 
 *The trove. One line per finding, sourced, added as each rung is dug.*
@@ -685,3 +847,8 @@ the product.
 | A-22 | Player-built structure is shared structure — whatever you build for your own mobility, you build for the adversary too | 6 | Anteater: eaters use the tunnels you dug; comfort infrastructure = attack surface |
 | A-23 | When the weapon is a timer, aim becomes choreography — the player's movement is the targeting system, and the skill tested is prediction | 6 | Anteater: delayed-fuse eggs aimed by retracing steps, priced by the tunnel speed asymmetry |
 | A-24 | A distribution innovation can precede its viability window by decades; the surrounding ecosystem is part of the product | 6 | Romox ECPC: dial-up game delivery to cartridge-burning mall kiosks with royalty accounting, patented 1983 |
+| A-25 | A gate doesn't eliminate the market it excludes — it reroutes it. Enforcement migrates to the cheapest layer to pressure, and the excluded market forms exactly where that pressure can't reach | 7 | 10NES → Tengen's Copyright-Office fraud, Color Dreams' voltage spike, Wisdom Tree's Christian-bookstore channel (350k carts) |
+| A-26 | When memory forces an encoding, the encoding writes the design rules — and every assumption it makes is one physics edge case from player-observable. The same encoding is a level-design language that makes authoring cheap | 7 | SMB's 2-byte level objects + forward-only camera; the Minus World is a stale-default read behind a wall-clip |
+| A-27 | Game feel is a table of numbers — authored, deterministic, transcribable, testable. Fixed timestep and fixed point are what make feel reproducible | 7 | 16 subpixels/px on a chip with no multiply; gravity piecewise on velocity and keyed to a held button |
+| A-28 | At a noisy boundary the read is not the value — input is a measurement, and verification belongs at the boundary, once | 7 | NTSC DPCM DMA double-clocks the pad register into phantom RIGHT presses; shipped games read twice and compare |
+| A-29 | Theme selects who shows up; mechanics decide whether they stay — an underserved audience forgives craft debt exactly once | 7 | Bible Adventures: SMB2-engine reskin, 350k sold through the channel the gate couldn't reach, remembered for its craft debt |

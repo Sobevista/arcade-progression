@@ -389,6 +389,12 @@ Now implemented. It reads as a dramatic spike rather than a death spiral specifi
 | UX-32 | Anteater ant movement: stop on stick release — **2026-07-19 [DANIEL, TESTIMONY — played the original]** | Ant moves only while a direction is held; stops at the next cell centre | First build coasted Pac-Man-style — which was never a decision, just the shared mover's default. Dig Dug lineage stops on release, and Daniel's memory of the original agrees. Stopping also makes egg-fuse timing deliberate (A-23) | If a source contradicts the testimony — but two independent lines already agree |
 | UX-33 | Anteater rocks shatter after falling — **2026-07-19 [DANIEL, TESTIMONY]** | Falling rock explodes on landing; the tunnel stays open | First build left it as a permanent undiggable obstacle [ASSUMED]. Written sources are silent on post-fall behaviour; Dig Dug precedent shatters, and Daniel's memory says "exploded". Testimony beats assumption | Same as UX-32 — a primary source (manual scan, footage) showing persistent rocks |
 
+## Rung 7 — NES (Exodus platformer) — decisions
+
+| # | Decision | Chose | Reasoning | Re-pick trigger |
+|---|---|---|---|---|
+| UX-34 | Theme + legal posture — **2026-07-18 [DANIEL'S RULING]** | SMB-class mechanics re-derived from the public record; **all expression original** — title, level layouts, art, characters, text, music. Theme: the Exodus story. Tone: reverent-playful, never preachy (the b4him thesis — show the homework, invite play). Single game, phased build | Mechanics aren't protectable expression; layouts/names/art are — and Nintendo's enforcement record is exact and current (Full Screen Mario C&D'd 2013, its GitHub repo DMCA'd 2016; an 8,535-repo takedown in one 2024 notice). A-21/A-25 both teach the forced divergence is where identity comes from, and A-29 is the rung's thesis: Wisdom Tree proved this audience is real and then under-served it on craft — this build inverts their order | If any Nintendo-protectable expression is found in the build (a name, a layout lift, an art lift) — strike on sight, no debate. If a playtester reads the tone as preachy — retune the presentation, not the doctrine |
+
 ## Open UX debts found during the build
 
 Named, not silently carried:

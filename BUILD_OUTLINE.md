@@ -107,6 +107,13 @@ not an oversight. It should be revisited the moment either becomes true:
   drive-by GitHub visitors arrive structured.
 - **Release gating for rung 5 (DANIEL):** `releases.json` still advertises Invaders
   only; rungs 3, 4, and now 5a/5b await the pacing call.
+- **Rung 7 title (DANIEL):** the Exodus platformer needs an original name before its
+  `rungs/07-*/` folder and SCOPE exist. Candidates on the table from the opening
+  session: *Out of Egypt*, *Deliverance*, *Let My People Go*, *The Long Walk*,
+  *Brick by Brick* (Ex. 5 — the brickyard opening). Original title required (UX-34).
+- **Alpiner (extra TI rung): BACK-BURNER (Daniel's ruling, 2026-07-18).** Buildable
+  any time; diminishing returns against the trove now that the TI has two rungs. The
+  harness OPEN LOOPS carries it.
 
 ## STATE OF BUILD
 
@@ -500,3 +507,37 @@ not an oversight. It should be revisited the moment either becomes true:
   timing feel, feedback button in real hands). Daniel's calls stacked behind it:
   T9 bar ruling, feedback rollout to 2–4, release gating. Next build pair: NES
   (rung 7), fresh chat, archaeology first.**
+
+- **2026-07-18 evening — RUNG 7 (NES) OPENED: ruling made, archaeology dug, no code
+  yet — by design ("measure twice").** Daniel's ruling, this session: SMB-class
+  mechanics re-derived from the public record, reskinned as an **Exodus platformer**
+  with all-original expression (title/levels/art/characters — legal posture and tone
+  guard in UX-34); **single game, phased build; Alpiner back-burnered** (diminishing
+  trove returns). The ruling has a historical twin dug the same hour: **Wisdom Tree
+  did exactly this on this exact console in 1990** — SMB2-engine Bible reskins sold
+  through Christian bookstores because Nintendo's gate couldn't reach that channel —
+  and their failure mode (theme carrying craft debt, A-29) is this rung's thesis
+  inverted: six rungs of craft first, theme last.
+
+  Dig landed before any code — **five findings, the biggest single-rung haul yet
+  (A-25..A-29)**: platform governance as the completed constraint class (10NES →
+  Tengen's Copyright-Office fraud → Color Dreams' voltage spike → the bookstore
+  channel); levels-as-object-streams with the forward-only camera guarding the
+  encoding (Minus World = stale-default read behind a wall-clip); game feel as a
+  transcribable table of numbers (16 subpixels/px, velocity-piecewise gravity keyed
+  to a held button — and the full commented disassembly public: the anti-A-9
+  machine); input as a measurement needing boundary verification (the DPCM phantom-
+  press bug); theme-vs-craft (A-29). Suffering Ledger set: KEEP fixed-point physics
+  + fixed timestep, object-encoded levels, forward-only camera (Phase 1), NES
+  palette + 16×16 attribute discipline, held-B run vocabulary; SKIP flicker, vblank
+  cycles, mappers, assembly; INVERTED: modern grace windows (coyote/buffer) — ship
+  1985-strict, playtest decides, declared anachronism if adopted.
+
+  Stamp correction on the record: rung-6 entries say 2026-07-19; actual commit
+  clocks read 2026-07-18 afternoon. Noted, not rewritten.
+
+  **NEXT ACTION: Daniel names the game (candidates in OPEN), then `SCOPE.md` for
+  Phase 1 — engine + transcribed SMB physics table + forward-only camera + one
+  complete world (Egypt brickyards → Red Sea set-piece), pass criteria locked
+  before code. The physics-table transcription from the disassembly is a SCOPE
+  task with its own verification step.**
