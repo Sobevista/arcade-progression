@@ -176,3 +176,67 @@ Nearly 3× in three attempts. That is the strongest signal in the whole dataset 
 game teaches itself, and no bot tier models improvement at all — every simulated player
 is frozen at one skill level forever. Worth building later: a tier whose parameters
 improve across runs.
+
+
+---
+
+## Rung 6 — Munch Man + Anteater — VERIFICATION RUNS, 2026-07-19
+
+*Driven live in the Browser pane over `python -m http.server`, every criterion through
+`sim.step()` on the virtual inputs. Ratio evidence framed against null bots per the W9
+lesson — no invented percentage bars survived contact with the data unexamined.*
+
+### Munch Man
+
+| Evidence | Result |
+|---|---|
+| Maze self-validation (load-time flood fill) | 160/160 chainable cells reachable, 4 energizers — game refuses to run otherwise |
+| Warp crossing (row 9, left edge) | crossed, re-entered col 20 exactly |
+| Score arithmetic audit (every step of 100 bot games) | **0 mismatches** — 10/link, 70/energizer, capture ladder 100-200-400-800, logo 10 |
+| Coverage bot vs random bot, level-1 completion (100 games each, 120 s cap) | **85/100 vs 0/100** — unbounded ratio, zero cap hits (every termination distinguishable) |
+| Energizer inversion (the A-21 half nobody copies) | measured 0.0702 px/ms during fright = base 0.052 x 1.35 exactly; Hoonos flip edible |
+| Hoono personalities (80 flee games) | first-to-catch: red 36, purple 18, blue 12, yellow 4 — the sourced intelligence order; yellow's vanish observed |
+| Extra life | fires at exactly 10,000 through the live scoring path |
+| Authored ceiling (A-18) | hoonoMul(9) == hoonoMul(50) == 1.28; fright floor 1600 ms |
+| Round 20 (dark round) | flags verified (walls hidden, 160 logos, chain off); last-logo-eaten advances to round 21 |
+| Test mode (sourced `* # *`) | arms, jumps rounds, scores labelled Test Score and BLOCKED from the leaderboard; normal path still offers entry |
+| Restarts | 5x rebuild identical; 0 leaks |
+
+**INV-20 earned here:** float overshoot past cell centres let yellow walk through a wall
+out of the maze (1 in ~60 games, crash was the lucky loud case). Fix = snap-to-centre;
+proven by 80-game containment sweep (pre-fix reproduced at game 21; post-fix zero).
+
+**Tuning correction on the record:** first ramp cap put Hoonos at 135% of player speed and
+the bot proved round 20 unwinnable — an authored ceiling set ABOVE the playability wall is
+just a different overflow (A-18 applied to ourselves). Retuned to 108% [ASSUMED, tuned by
+play]. **Round-20 human winnability remains UNVERIFIED** — the bot still cannot beat it;
+expert humans exploit energizer resets far better than the bot. Family playtest question.
+
+### Anteater
+
+| Evidence | Result |
+|---|---|
+| Field build | surface all air, 4 food on surface, colony chamber, 5 rocks embedded |
+| A-22 rule (eaters only in air/tunnels) | **0 violations** across 10 full games + all sweeps (self-instrumented counter) |
+| Tunnel speed asymmetry | ant 0.056 > eater 0.038 px/ms (constants + observed chases) |
+| Round-trip economy | 21 deliveries across 10 bot games; scoring exact every time; 5 set completions, extra ant granted on ALL 5 |
+| Eggs | 5 per ant, decrement on lay, fuse fires ~2,000 ms, blast kills adjacent eaters |
+| Rocks | undermine → wobble → fall → settle as undiggable ROCK_SET; crush verified +300 exactly (deep-shaft unit test) |
+| Authored ceilings (A-18) | speed cap at set 6, eater cap 4, both hold at set 60 |
+| Restarts / terminal | 5x rebuild identical; games reach `over` through sim inputs only |
+
+**T9 verdict — MISS AS WRITTEN, flagged for Daniel (W9 shape):** the >=10x bar was a guess.
+Measured bracket: all-random bot **0 kills/10 games** (dies every game); skilled movement +
+random eggs **3**; deliberate kiting **9**. The isolated timing premium is **3x** — the
+weapon is deliberately forgiving (+-1-cell blast, ~2-cell arrival window) for the family
+audience, and a 10x premium would require an unforgiving timing window. Candidate better
+proxy if re-measured: kills per egg spent (not chosen post-hoc to pass — named for the
+record). Daniel rules.
+
+### Shared
+
+Both games **12/12 CONFORMANT** (feedback contract included, standalone check reading real
+bytes: munchman 46 KB, anteater 42 KB). Legacy rungs 2-4 still abstain LOUDLY on feedback
+(INV-19 preserved, verified live on invaders). Docs conformance: README + landing page
+flipped together, all five built rungs consistent; `releases.json` untouched (still
+Invaders-only, Daniel's pacing gate). Zero console errors on load, play, and restart.

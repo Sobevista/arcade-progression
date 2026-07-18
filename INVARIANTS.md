@@ -326,6 +326,31 @@ treated the checker as a subject too. Check the checker's evidence, not just its
 
 ---
 
+## From rung 6 — MUNCH MAN + ANTEATER (2026-07-19)
+
+### INV-20 — A parametric mover must SNAP to its decision points, or float error walks through walls
+The grid mover advanced entities with `e.y += (ty - e.y)` on arrival at a cell
+centre. In floating point that sum does not always land exactly on `ty` — it can
+overshoot by an ulp. An entity a hair *past* a centre computes its next target as
+the **next** cell's centre, **without ever running the direction pick**, because
+"at centre" tests a tolerance the overshoot just cleared. Result: the entity
+tunnels through walls in a straight line.
+
+**Earned:** the yellow Hoono escaped through the top of the maze at column 9 —
+once in roughly sixty games — and crashed the row lookup. The crash was the lucky
+case: an in-bounds escape is *silent*, and looks like AI misbehaviour, not motion
+error. Found by an 80-game flee-bot sweep with a containment assert; pre-fix it
+reproduced at game 21, post-fix zero escapes in 80.
+
+**The invariant:** when motion is quantised around decision points (cell centres,
+waypoints, nodes), arrival must **assign the target coordinate exactly**, never
+accumulate toward it. Any tolerance test paired with accumulated float steps will
+eventually land an entity on the far side of the tolerance, and every skipped
+decision point is a skipped rules check. INV-12's sibling: that one cached a
+stale step *vector*; this one accumulates a stale step *sum*.
+
+---
+
 ## Ledger
 
 | # | Invariant | Rung | Cost to find |
@@ -349,6 +374,7 @@ treated the checker as a subject too. Check the checker's evidence, not just its
 | 17 | Layout intent is not layout fact — measure the rendered box | Breakout + Invaders | "width:100%" was shipping at 448px of 921px |
 | 18 | A convention with no enforcement is a preference, and preferences drift | Invaders | leaderboard missed for a day; the TODO was written and ignored |
 | 19 | A check that cannot observe its subject must abstain loudly, never pass | Galaga | the `standalone` check passed a 404 page on every rung since birth; the "(0KB)" tell was in its own output |
+| 20 | A parametric mover must snap to its decision points — accumulated float steps past a tolerance skip the rules check | Munch Man | yellow Hoono walked out of the maze through a wall, once in ~60 games; in-bounds escapes would have been silent |
 
 ---
 

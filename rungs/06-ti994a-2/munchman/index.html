@@ -1,0 +1,1123 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>MUNCH MAN — rung 6</title>
+
+<style>
+  :root { --ti-black:#000000; --ti-gray:#CCCCCC; }
+  /* html must NOT be a flex container — see the note in rung 3 (INV-17). */
+  html { margin:0; height:100%; }
+  body {
+    margin:0; min-height:100%; width:100%; box-sizing:border-box;
+    background:var(--ti-black); color:var(--ti-gray);
+    font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; overflow:hidden; touch-action:none; user-select:none;
+  }
+  canvas { image-rendering:pixelated; display:block; }
+  #pad, #pad2 { display:none; }
+  #pad { width:100%; justify-content:space-between;
+         padding:0 10px; box-sizing:border-box; gap:8px; }
+  #pad button { flex:1 1 0; max-width:190px; height:76px;
+    font:inherit; font-size:24px;
+    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:12px; }
+  #pad2 { gap:8px; margin-bottom:4px; }
+  #pad2 button { width:78px; height:30px; font:inherit; font-size:11px;
+    background:#0a0a0a; color:#777; border:2px solid #242424; border-radius:8px; }
+  #pad button:active, #pad2 button:active { background:#222; }
+  body.touch #pad, body.touch #pad2 { display:flex; }
+  #hint { font-size:12px; color:#555; letter-spacing:1px; }
+  body.touch #hint { display:none; }
+
+  /* Feedback overlay — shared contract (rung 5 pilot, extended to rung 6). */
+  #fb { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.86);
+        z-index:10; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+  #fb.open { display:flex; }
+  #fb .box { width:min(92vw,420px); background:#0a0a0a; border:2px solid #333;
+             border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  #fb h2 { margin:0; font-size:14px; color:var(--ti-gray); letter-spacing:1px; }
+  #fb textarea { width:100%; box-sizing:border-box; height:110px; resize:none;
+                 background:#000; color:var(--ti-gray); border:1px solid #333;
+                 border-radius:6px; font:inherit; font-size:13px; padding:8px; }
+  #fb .ctx { font-size:10px; color:#555; white-space:pre-wrap; }
+  #fb .row { display:flex; gap:8px; }
+  #fb .row button { flex:1; height:40px; font:inherit; font-size:12px;
+                    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:8px; }
+  #fb .row button:active { background:#222; }
+  #fb .note { font-size:10px; color:#4a4; min-height:12px; }
+</style>
+
+<div id="pad2">
+  <button id="bP" aria-label="pause">PAUSE</button>
+  <button id="bT" aria-label="title">TITLE</button>
+  <button id="bM" aria-label="sound">SOUND</button>
+  <button id="bFB" aria-label="feedback">FEEDBACK</button>
+</div>
+<canvas id="screen"></canvas>
+<div id="pad">
+  <button id="bL" aria-label="left">&#9664;</button>
+  <button id="bU" aria-label="up">&#9650;</button>
+  <button id="bF" aria-label="start">GO</button>
+  <button id="bD" aria-label="down">&#9660;</button>
+  <button id="bR" aria-label="right">&#9654;</button>
+</div>
+<div id="hint">ARROWS MOVE &nbsp;&middot;&nbsp; F FEEDBACK &nbsp;&middot;&nbsp; M SOUND &nbsp;&middot;&nbsp; ESC TITLE</div>
+
+<div id="fb">
+  <div class="box">
+    <h2>REPORT / FEEDBACK</h2>
+    <textarea id="fbText" placeholder="What did you see? What felt wrong or great?"></textarea>
+    <div class="ctx" id="fbCtx"></div>
+    <div class="row">
+      <button id="fbGh">SEND TO GITHUB</button>
+      <button id="fbCopy">COPY REPORT</button>
+      <button id="fbClose">CLOSE</button>
+    </div>
+    <div class="note" id="fbNote"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   MUNCH MAN — rung 6a of the progression. Jim Dramis, Texas Instruments,
+   1982 (PHM 3057) — the same hand as Parsec. Single file, vanilla JS,
+   Canvas 2D, zero dependencies. Raster: 256x192, the TI-99/4A's own.
+
+   The rung's thesis (A-21): the 1981 prototype had dots and power pills;
+   the K.C. Munchkin injunction (1982-03-02) made "total concept and feel"
+   dangerous, and TI inverted the verb — you FILL the maze with a chain
+   instead of emptying it of dots, and the energizer speeds YOU up instead
+   of only nerfing the enemies. The maze is a ledger, not a to-do list.
+
+   Sourced: chain 10 pts/link; 4 energizers per level, 70 pts each;
+   capture ladder 100/200/400/800 within one energizer window; extra life
+   each 10,000; four Hoonos (red most intelligent, yellow can vanish);
+   Hoono speed/aggression rises per level and can pass the player's;
+   levels 20/40/60 invisible (Wikipedia version — sources conflict, see
+   ARCHAEOLOGY Open list) [ASSUMED]; warp corridors on both sides; the
+   title-screen "* # *" test mode whose scores are labelled "Test Score".
+   Maze layout, Hoono AI details, energizer duration: [ASSUMED].
+   ========================================================================= */
+
+/* ---- TI-99/4A palette (TMS9918A) ------------------------------------- */
+const TI = {
+  black:'#000000', mediumGreen:'#21C842', lightGreen:'#5EDC78',
+  darkBlue:'#5455ED', lightBlue:'#7D76FC', darkRed:'#D4524D',
+  cyan:'#42EBF5',    mediumRed:'#FC5554',  lightRed:'#FF7978',
+  darkYellow:'#D4C154', lightYellow:'#E6CE80', darkGreen:'#21B03B',
+  magenta:'#C95BBA', gray:'#CCCCCC', white:'#FFFFFF'
+};
+
+/* ---- Sound ------------------------------------------------------------- */
+const Sound = (() => {
+  let ac = null, muted = false;
+  const ctx = () => ac || (ac = new (window.AudioContext || window.webkitAudioContext)());
+  function tone({ freq, to = null, dur = 0.1, type = 'square', vol = 0.12, at = 0 }) {
+    if (muted || !ac) return;
+    const c = ac, t0 = c.currentTime + at;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    if (to !== null) o.frequency.linearRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function noise({ dur = 0.2, vol = 0.2 }) {
+    if (muted || !ac) return;
+    const c = ac, n = Math.max(1, Math.floor(c.sampleRate * dur));
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = c.createBufferSource(); s.buffer = buf;
+    const g = c.createGain(); g.gain.value = vol;
+    s.connect(g).connect(c.destination);
+    s.start();
+  }
+  let linkFlip = false;
+  return {
+    unlock() { const c = ctx(); if (c.state === 'suspended') c.resume(); },
+    toggle() { muted = !muted; return muted; },
+    get muted() { return muted; },
+    link()    { linkFlip = !linkFlip;
+                tone({ freq: linkFlip ? 440 : 520, dur: 0.03, type:'square', vol: 0.05 }); },
+    energize(){ tone({ freq: 300, to: 900, dur: 0.25, type:'square', vol: 0.1 }); },
+    capture() { tone({ freq: 900, to: 1400, dur: 0.12, type:'square', vol: 0.1 }); },
+    death()   { noise({ dur: 0.5, vol: 0.2 });
+                tone({ freq: 400, to: 60, dur: 0.55, type: 'sawtooth', vol: 0.1 }); },
+    level()   { [523,659,784,1047].forEach((f,i) =>
+                  tone({ freq:f, dur:0.09, type:'square', vol:0.08, at:i*0.08 })); },
+    extra()   { [784,988,1175,1568].forEach((f,i) =>
+                  tone({ freq:f, dur:0.09, type:'square', vol:0.09, at:i*0.08 })); },
+    logo()    { tone({ freq: 700, dur: 0.04, type:'square', vol: 0.06 }); }
+  };
+})();
+
+/* ---- Logical screen — the TI-99/4A's own raster ------------------------ */
+const W = 256, H = 192;
+const cv = document.getElementById('screen');
+const cx = cv.getContext('2d', { alpha:false });
+
+let scale = 1;
+function fit() {
+  const availW = window.innerWidth  - 16;
+  const availH = window.innerHeight - (document.body.classList.contains('touch') ? 150 : 60);
+  scale = Math.max(1, Math.floor(Math.min(availW / W, availH / H)));   // INV-7
+  cv.width = W; cv.height = H;
+  cv.style.width  = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cx.imageSmoothingEnabled = false;
+}
+if (matchMedia('(hover: none)').matches) document.body.classList.add('touch');
+addEventListener('resize', fit);
+fit();
+
+/* ---- Font (5x7) -------------------------------------------------------- */
+const GLYPHS = {
+ '0':'11111 10001 10001 10001 10001 10001 11111','1':'00100 01100 00100 00100 00100 00100 01110',
+ '2':'11111 00001 00001 11111 10000 10000 11111','3':'11111 00001 00001 11111 00001 00001 11111',
+ '4':'10001 10001 10001 11111 00001 00001 00001','5':'11111 10000 10000 11111 00001 00001 11111',
+ '6':'11111 10000 10000 11111 10001 10001 11111','7':'11111 00001 00010 00100 01000 01000 01000',
+ '8':'11111 10001 10001 11111 10001 10001 11111','9':'11111 10001 10001 11111 00001 00001 11111',
+ 'A':'01110 10001 10001 11111 10001 10001 10001','B':'11110 10001 10001 11110 10001 10001 11110',
+ 'C':'01111 10000 10000 10000 10000 10000 01111','D':'11110 10001 10001 10001 10001 10001 11110',
+ 'E':'11111 10000 10000 11110 10000 10000 11111','F':'11111 10000 10000 11110 10000 10000 10000',
+ 'G':'01111 10000 10000 10111 10001 10001 01111','H':'10001 10001 10001 11111 10001 10001 10001',
+ 'I':'11111 00100 00100 00100 00100 00100 11111','J':'00011 00001 00001 00001 00001 10001 01110',
+ 'K':'10001 10010 10100 11000 10100 10010 10001','L':'10000 10000 10000 10000 10000 10000 11111',
+ 'M':'10001 11011 10101 10101 10001 10001 10001','N':'10001 11001 10101 10011 10001 10001 10001',
+ 'O':'01110 10001 10001 10001 10001 10001 01110','P':'11110 10001 10001 11110 10000 10000 10000',
+ 'Q':'01110 10001 10001 10001 10101 10010 01101','R':'11110 10001 10001 11110 10100 10010 10001',
+ 'S':'01111 10000 10000 01110 00001 00001 11110','T':'11111 00100 00100 00100 00100 00100 00100',
+ 'U':'10001 10001 10001 10001 10001 10001 01110','V':'10001 10001 10001 10001 10001 01010 00100',
+ 'W':'10001 10001 10001 10101 10101 11011 10001','X':'10001 01010 00100 00100 00100 01010 10001',
+ 'Y':'10001 01010 00100 00100 00100 00100 00100','Z':'11111 00001 00010 00100 01000 10000 11111',
+ ' ':'00000 00000 00000 00000 00000 00000 00000','-':'00000 00000 00000 11111 00000 00000 00000',
+ '<':'00010 00100 01000 10000 01000 00100 00010','>':'01000 00100 00010 00001 00010 00100 01000',
+ ':':'00000 00100 00100 00000 00100 00100 00000','!':'00100 00100 00100 00100 00100 00000 00100',
+ '.':'00000 00000 00000 00000 00000 00000 00100','/':'00001 00010 00010 00100 01000 01000 10000',
+ '*':'00000 10101 01110 11111 01110 10101 00000','#':'01010 11111 01010 01010 01010 11111 01010'
+};
+function text(str, x, y, color) {
+  cx.fillStyle = color;
+  let px = x;
+  for (const ch of str.toUpperCase()) {
+    const g = GLYPHS[ch] || GLYPHS[' '];
+    g.split(' ').forEach((row, r) => {
+      for (let c = 0; c < 5; c++) if (row[c] === '1') cx.fillRect(px + c, y + r, 1, 1);
+    });
+    px += 6;
+  }
+}
+const textW = s => s.length * 6 - 1;
+const center = (s, y, color) => text(s, ((W - textW(s)) / 2) | 0, y, color);
+
+/* ---- Maze — [ASSUMED layout]. 21x17 cells of 8 px. --------------------
+   Legend: # wall, . chainable corridor, o energizer corner, W warp cell
+   (chainable, wraps to the far side — sourced feature, one pair per warp
+   row), P pen interior (Hoonos only), - pen door (Hoonos only).
+   The maze VALIDATES ITSELF at load: a flood fill from spawn must reach
+   every chainable cell or the game throws instead of running (INV-19 —
+   a level that can't be completed must refuse to exist). */
+const MAZE_ROWS = [
+  '#####################',
+  '#o........#........o#',
+  '#.##.####.#.####.##.#',
+  '#...................#',
+  '#.##.#.#######.#.##.#',
+  'W....#....#....#....W',
+  '####.####.#.####.####',
+  '####.#.........#.####',
+  '####.#.###-###.#.####',
+  'W......#PPPPP#......W',
+  '####.#.#######.#.####',
+  '####.#.........#.####',
+  '####.####.#.####.####',
+  '#....#....#....#....#',
+  '#.##.#.#######.#.##.#',
+  '#o.................o#',
+  '#####################'
+];
+const COLS = 21, ROWS = 17, T = 8;
+const OX = (W - COLS * T) / 2, OY = 22;
+const PLAYER_SPAWN = { c: 10, r: 11 };
+const PEN_CELLS = [{c:8,r:9},{c:9,r:9},{c:11,r:9},{c:12,r:9}];
+const DOOR = { c: 10, r: 8 };
+
+const at = (c, r) => (MAZE_ROWS[r] && MAZE_ROWS[r][((c % COLS) + COLS) % COLS]) || '#';
+const isCorridor = ch => ch === '.' || ch === 'o' || ch === 'W';
+/* Player-passable; Hoonos additionally pass '-' and 'P'. */
+const openFor = (c, r, isHoono) => {
+  const ch = at(c, r);
+  return isCorridor(ch) || (isHoono && (ch === '-' || ch === 'P'));
+};
+const isWarpRow = r => MAZE_ROWS[r][0] === 'W';
+
+/* Enumerate chainable cells + energizers; validate connectivity. */
+const CHAINABLE = [];
+const ENERGIZERS = [];
+for (let r = 0; r < ROWS; r++)
+  for (let c = 0; c < COLS; c++) {
+    const ch = at(c, r);
+    if (isCorridor(ch)) CHAINABLE.push({ c, r });
+    if (ch === 'o') ENERGIZERS.push({ c, r });
+  }
+(function validateMaze() {
+  const seen = new Set([PLAYER_SPAWN.c + ',' + PLAYER_SPAWN.r]);
+  const q = [PLAYER_SPAWN];
+  while (q.length) {
+    const { c, r } = q.pop();
+    [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dc, dr]) => {
+      let nc = c + dc, nr = r + dr;
+      if (isWarpRow(r) && (nc < 0 || nc >= COLS)) nc = ((nc % COLS) + COLS) % COLS;
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return;
+      if (!isCorridor(at(nc, nr))) return;
+      const k = nc + ',' + nr;
+      if (!seen.has(k)) { seen.add(k); q.push({ c: nc, r: nr }); }
+    });
+  }
+  if (seen.size !== CHAINABLE.length)
+    throw new Error('MAZE INVALID: ' + seen.size + ' reachable of ' +
+                    CHAINABLE.length + ' chainable cells');
+  if (ENERGIZERS.length !== 4)
+    throw new Error('MAZE INVALID: ' + ENERGIZERS.length + ' energizers, need 4');
+})();
+
+/* ---- Tuning. Speeds px/ms. [ASSUMED, tuned by play] -------------------- */
+const PLAYER_SPEED   = 0.052;
+const ENERGIZED_MUL  = 1.35;          // sourced: the energizer speeds YOU up
+const HOONO_BASE     = 0.044;
+const FRIGHT_MUL     = 0.62;
+const RAMP_CAP_LEVEL = 9;             // A-18: the AUTHORED ceiling
+function hoonoMul(level) { return 1 + (Math.min(level, RAMP_CAP_LEVEL) - 1) * 0.035; }
+/* At the cap: 0.044*1.28 = 0.0563 = 108% of the player's 0.052 — sourced
+   "eventually surpassing the speed of Munch Man", but capped, never
+   runaway. First cut was 135% and the verification bot proved round 20
+   unwinnable — an authored ceiling must sit BELOW the playability wall
+   (A-18 applied to ourselves; see RUN_LOG). [ASSUMED, tuned by play] */
+function frightDur(level) { return Math.max(1500, 6000 - (Math.min(level, RAMP_CAP_LEVEL) - 1) * 550); }
+const EYES_RESPAWN_MS = 2600;         // eaten Hoono revives in pen [ASSUMED]
+const VANISH_VISIBLE_MS = 3800, VANISH_HIDDEN_MS = 1400;  // yellow's trick
+const SUB_MS = 8;                     // update substep (INV-1/INV-2 discipline)
+
+/* Scoring — sourced. */
+const PTS_LINK = 10, PTS_ENERGIZER = 70;
+const CAPTURE_LADDER = [100, 200, 400, 800];
+const EXTRA_LIFE_EVERY = 10000;
+const PTS_LOGO = 10;                  // invisible-round logo [ASSUMED]
+const INVISIBLE_EVERY = 20;           // rounds 20/40/60 [ASSUMED — see header]
+
+/* ---- Sprites ----------------------------------------------------------- */
+function sprite(rows) {
+  return { w: rows[0].length, h: rows.length,
+           bits: rows.map(r => [...r].map(c => c === 'X' ? 1 : 0)) };
+}
+/* Munch Man: mouth open/closed, 7x7 */
+const MM_OPEN = sprite(['..XXX..','.XXXXX.','XXXX...','XXX....','XXXX...','.XXXXX.','..XXX..']);
+const MM_SHUT = sprite(['..XXX..','.XXXXX.','XXXXXXX','XXXXXXX','XXXXXXX','.XXXXX.','..XXX..']);
+/* Hoono shapes — v1 cycles 2 sets (of the sourced 20; SKIP v1 per ledger) */
+const HOONO_A = sprite(['..XXX..','.XXXXX.','XX.X.XX','XXXXXXX','XXXXXXX','X.XXX.X','X..X..X']);
+const HOONO_B = sprite(['X.....X','.X.X.X.','XXXXXXX','XX.X.XX','XXXXXXX','.XXXXX.','X.X.X.X']);
+const EYES    = sprite(['.......','.XX.XX.','.XX.XX.','.......','.......','.......','.......']);
+/* The TI logo pickup for invisible rounds — the Texas-silhouette-ish mark */
+const LOGO = sprite(['.XXXXX.','.X.X.X.','...X...','..XXX..','..XX...','...X...']);
+
+function draw(s, x, y, color) {
+  cx.fillStyle = color;
+  for (let r = 0; r < s.h; r++)
+    for (let c = 0; c < s.w; c++)
+      if (s.bits[r][c]) cx.fillRect((x|0) + c, (y|0) + r, 1, 1);
+}
+
+/* ---- Game state -------------------------------------------------------- */
+const HOONO_COLORS = [
+  { name:'red',    col: TI.mediumRed },    // sourced: the most intelligent
+  { name:'purple', col: TI.magenta },
+  { name:'blue',   col: TI.lightBlue },
+  { name:'yellow', col: TI.lightYellow }   // sourced: stupid, but vanishes
+];
+
+const game = {
+  state: 'title',            // title | play | dying | over | entry
+  paused: false,
+  level: 1, score: 0, lives: 2, nextLifeAt: EXTRA_LIFE_EVERY,
+  chained: null,             // Set of 'c,r'
+  logos: null,               // Set of 'c,r' — invisible rounds only
+  energizersLeft: null,      // Set of 'c,r'
+  fright: 0, captureIdx: 0,
+  player: null, hoonos: [],
+  testMode: false,           // sourced * # * — scores become "Test Score"
+  dyingT: 0, msg: null, levelFlashT: 0,
+  entry: null, lastRank: 0,
+  time: 0
+};
+const key = (c, r) => c + ',' + r;
+const invisibleRound = n => n > 0 && n % INVISIBLE_EVERY === 0;
+
+function makePlayer() {
+  return { x: OX + (PLAYER_SPAWN.c + 0.5) * T, y: OY + (PLAYER_SPAWN.r + 0.5) * T,
+           dir: null, want: null, mouth: 0 };
+}
+function makeHoono(i) {
+  const pen = PEN_CELLS[i];
+  return { i, name: HOONO_COLORS[i].name,
+           x: OX + (pen.c + 0.5) * T, y: OY + (pen.r + 0.5) * T,
+           dir: 'up', inPen: true, penT: 600 + i * 1700,
+           eyes: false, eyesT: 0,
+           vanishT: VANISH_VISIBLE_MS + i * 900, hidden: false };
+}
+
+/* INV-11: one function per lifecycle event. */
+function newGame(testMode) {
+  game.testMode = !!testMode;
+  game.score = 0; game.lives = 2; game.nextLifeAt = EXTRA_LIFE_EVERY;
+  game.lastRank = 0; game.paused = false; game.msg = null;
+  startRound(game.testMode && TestMode.round > 1 ? TestMode.round : 1);
+  if (game.testMode && TestMode.lives) game.lives = TestMode.lives;
+  game.state = 'play';
+}
+function startRound(n) {
+  game.level = n;
+  game.chained = new Set();
+  game.energizersLeft = new Set(ENERGIZERS.map(e => key(e.c, e.r)));
+  game.logos = invisibleRound(n)
+    ? new Set(CHAINABLE.map(e => key(e.c, e.r)))
+    : null;
+  game.fright = 0; game.captureIdx = 0;
+  game.player = makePlayer();
+  game.hoonos = [0,1,2,3].map(makeHoono);
+  game.levelFlashT = 1400;
+  Sound.level();
+}
+function respawn() {                    // after a death: chain PERSISTS
+  game.fright = 0; game.captureIdx = 0;
+  game.player = makePlayer();
+  game.hoonos = [0,1,2,3].map(makeHoono);
+}
+function gameOver() { game.state = 'over'; }
+
+function addScore(pts) {
+  game.score += pts;
+  while (game.score >= game.nextLifeAt) {
+    game.lives++; Sound.extra(); flashMsg('EXTRA MUNCH MAN');
+    game.nextLifeAt += EXTRA_LIFE_EVERY;
+  }
+}
+function flashMsg(t) { game.msg = { text: t, t: 1300 }; }
+
+/* ---- Grid helpers ------------------------------------------------------ */
+const cellOf = e => ({ c: Math.floor((e.x - OX) / T), r: Math.floor((e.y - OY) / T) });
+const centerOf = (c, r) => ({ x: OX + (c + 0.5) * T, y: OY + (r + 0.5) * T });
+const DIRS = { left:[-1,0], right:[1,0], up:[0,-1], down:[0,1] };
+const OPP  = { left:'right', right:'left', up:'down', down:'up' };
+
+/* Can entity standing at cell (c,r) leave toward dir? Handles warps. */
+function canGo(c, r, dir, isHoono) {
+  const [dc, dr] = DIRS[dir];
+  let nc = c + dc, nr = r + dr;
+  if (isWarpRow(r) && (nc < 0 || nc >= COLS)) nc = ((nc % COLS) + COLS) % COLS;
+  if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) return false;
+  /* Hoonos may not re-enter the pen through the door unless they're eyes. */
+  return openFor(nc, nr, isHoono);
+}
+
+/* Move an entity along the grid by dist px, honouring walls, turns at
+   cell centres, and warp wrap. Motion is always toward the next cell
+   centre AHEAD along e.dir — never "toward the current centre", which
+   would reverse an entity that had just left it (the warp-edge
+   oscillation bug, caught statically before first run — see RUN_LOG). */
+function gridMove(e, dist, isHoono, pick) {
+  let guard = 64;
+  while (dist > 0.0001 && guard-- > 0) {
+    const { c, r } = cellOf(e);
+    const ctr = centerOf(c, r);
+    const atCenter = Math.abs(ctr.x - e.x) + Math.abs(ctr.y - e.y) < 0.001;
+    if (atCenter) {
+      const d = pick(c, r);
+      if (!d || !canGo(c, r, d, isHoono)) break;
+      e.dir = d;
+    }
+    if (!e.dir) break;
+    const [dc, dr] = DIRS[e.dir];
+    /* the centre ahead: current cell's if we haven't reached it, else the
+       next cell's (possibly a virtual off-grid centre on a warp row) */
+    const along = dc ? (ctr.x - e.x) * dc : (ctr.y - e.y) * dr;
+    const tx = along > 0.001 ? ctr.x : ctr.x + dc * T;
+    const ty = along > 0.001 ? ctr.y : ctr.y + dr * T;
+    const need = Math.abs(tx - e.x) + Math.abs(ty - e.y);
+    const step = Math.min(dist, need);
+    if (step >= need - 0.0001) {
+      /* SNAP to the centre exactly. `e.y += (ty - e.y)` can overshoot by a
+         float ulp, and an entity a hair PAST a centre targets the NEXT cell
+         without ever running pick — it walks through walls. Yellow escaped
+         the maze through row 0 this way, once in ~60 games (see RUN_LOG). */
+      e.x = tx; e.y = ty;
+      dist -= need;
+      if (isWarpRow(r)) {
+        /* arriving at the virtual centre beyond the edge = the far column's
+           centre after the teleport, exactly */
+        if (e.x < OX) e.x += COLS * T;
+        else if (e.x > OX + COLS * T) e.x -= COLS * T;
+      }
+    } else {
+      e.x += dc * step; e.y += dr * step;
+      dist -= step;
+    }
+  }
+}
+
+/* ---- Hoono AI ---------------------------------------------------------- */
+/* Distance with warp-row awareness kept simple: plain Manhattan, plus the
+   wrapped horizontal alternative. [ASSUMED AI — sourced traits only] */
+function dist(c1, r1, c2, r2) {
+  const dc = Math.min(Math.abs(c1 - c2), COLS - Math.abs(c1 - c2));
+  return dc + Math.abs(r1 - r2);
+}
+function pickHoono(h, c, r) {
+  const opts = ['up','left','down','right'].filter(d => canGo(c, r, d, true));
+  if (!opts.length) return null;
+  /* never reverse unless dead end */
+  const fwd = opts.filter(d => d !== OPP[h.dir]);
+  const use = fwd.length ? fwd : opts;
+
+  const p = cellOf(game.player);
+  let target;
+  if (h.eyes) target = DOOR;                                  // go home
+  else if (game.fright > 0) {                                 // flee
+    let best = use[0], bd = -1;
+    for (const d of use) {
+      const [dc, dr] = DIRS[d];
+      const dd = dist(c + dc, r + dr, p.c, p.r);
+      if (dd > bd) { bd = dd; best = d; }
+    }
+    return best;
+  }
+  else if (h.name === 'red') target = p;                      // chase
+  else if (h.name === 'purple') {                             // ambush ahead
+    const pd = game.player.dir ? DIRS[game.player.dir] : [0, 0];
+    target = { c: p.c + pd[0] * 4, r: p.r + pd[1] * 4 };
+  }
+  else if (h.name === 'blue')                                 // near = chase
+    target = dist(c, r, p.c, p.r) <= 6 ? p : null;
+  else target = null;                                         // yellow drifts
+
+  if (h.inPen || at(c, r) === 'P') return 'up';               // leave the pen
+  if (!target) return use[(Math.random() * use.length) | 0];
+  let best = use[0], bd = Infinity;
+  for (const d of use) {
+    const [dc, dr] = DIRS[d];
+    const dd = dist(c + dc, r + dr, target.c, target.r);
+    if (dd < bd) { bd = dd; best = d; }
+  }
+  return best;
+}
+
+/* ---- Update ------------------------------------------------------------ */
+let firePrev = false;
+function update(dt) {
+  game.time += dt;
+  if (game.msg) { game.msg.t -= dt; if (game.msg.t <= 0) game.msg = null; }
+  if (game.levelFlashT > 0) game.levelFlashT -= dt;
+
+  if (game.state === 'title') {
+    TestMode.tick(dt);
+    if (held.fire() && !firePrev) newGame(TestMode.armed);
+    firePrev = held.fire();
+    return;
+  }
+  if (game.state === 'entry')  { updateEntry(dt); return; }
+  if (game.state === 'over') {
+    if (held.fire() && !firePrev) startEntryOrTitle();
+    firePrev = held.fire();
+    return;
+  }
+  if (game.state === 'dying') {
+    game.dyingT -= dt;
+    firePrev = held.fire();
+    if (game.dyingT <= 0) {
+      game.lives--;
+      if (game.lives < 0) gameOver();
+      else { respawn(); game.state = 'play'; }
+    }
+    return;
+  }
+  if (game.paused) { firePrev = held.fire(); return; }
+
+  /* ---- play, in substeps (INV-1/INV-2: stride stays tiny) ---- */
+  let rem = dt;
+  while (rem > 0 && game.state === 'play') {
+    const h = Math.min(SUB_MS, rem);
+    rem -= h;
+    stepPlay(h);
+  }
+  firePrev = held.fire();
+}
+
+function stepPlay(dt) {
+  const P = game.player;
+  if (game.fright > 0) {
+    game.fright -= dt;
+    if (game.fright <= 0) { game.fright = 0; game.captureIdx = 0; }
+  }
+
+  /* player */
+  if (held.left()) P.want = 'left';
+  else if (held.right()) P.want = 'right';
+  else if (held.up()) P.want = 'up';
+  else if (held.down()) P.want = 'down';
+  const spd = PLAYER_SPEED * (game.fright > 0 ? ENERGIZED_MUL : 1);
+  gridMove(P, spd * dt, false, (c, r) => {
+    if (P.want && canGo(c, r, P.want, false)) return P.want;
+    if (P.dir && canGo(c, r, P.dir, false)) return P.dir;
+    return null;
+  });
+  P.mouth += dt;
+
+  /* chain the occupied cell — substeps are < 1 px, so no cell is ever
+     skipped; this also chains the spawn cell and warp landings */
+  { const pc = cellOf(P); enterCell(pc.c, pc.r); }
+  if (game.state !== 'play') return;
+
+  /* hoonos */
+  for (const hn of game.hoonos) {
+    if (hn.inPen) {
+      hn.penT -= dt;
+      if (hn.penT <= 0) {
+        hn.inPen = false;
+        const d = centerOf(DOOR.c, DOOR.r - 1);   // pop out above the door
+        hn.x = d.x; hn.y = d.y; hn.dir = 'left';
+      }
+      continue;
+    }
+    if (hn.eyes) {
+      hn.eyesT -= dt;
+      if (hn.eyesT <= 0) {
+        const fresh = makeHoono(hn.i);                         // INV-5 rebuild
+        fresh.penT = 900;
+        game.hoonos[game.hoonos.indexOf(hn)] = fresh;
+        continue;
+      }
+    }
+    /* yellow's vanish cycle — sourced trick. Lethal while hidden [ASSUMED] */
+    if (hn.name === 'yellow' && !hn.eyes) {
+      hn.vanishT -= dt;
+      if (hn.vanishT <= 0) {
+        hn.hidden = !hn.hidden;
+        hn.vanishT = hn.hidden ? VANISH_HIDDEN_MS : VANISH_VISIBLE_MS;
+      }
+    }
+    const mul = hn.eyes ? 1.9 : (game.fright > 0 ? FRIGHT_MUL : hoonoMul(game.level));
+    gridMove(hn, HOONO_BASE * mul * dt, true, (c, r) => pickHoono(hn, c, r));
+
+    /* collision — centre distance under 6 px [entity size 7] */
+    if (!hn.eyes && Math.abs(hn.x - P.x) < 6 && Math.abs(hn.y - P.y) < 6) {
+      if (game.fright > 0) {
+        const pts = CAPTURE_LADDER[Math.min(game.captureIdx, 3)];
+        game.captureIdx++;
+        addScore(pts); Sound.capture();
+        flashMsg(String(pts));
+        hn.eyes = true; hn.eyesT = EYES_RESPAWN_MS; hn.hidden = false;
+      } else {
+        Sound.death();
+        game.state = 'dying'; game.dyingT = 1300;
+        return;
+      }
+    }
+  }
+}
+
+function enterCell(c, r) {
+  const k = key(c, r);
+  if (game.logos) {                                  // invisible round
+    if (game.logos.delete(k)) { addScore(PTS_LOGO); Sound.logo(); }
+    if (game.logos.size === 0) roundWon();
+    return;
+  }
+  if (game.energizersLeft.has(k)) {
+    game.energizersLeft.delete(k);
+    addScore(PTS_ENERGIZER);
+    game.fright = frightDur(game.level);
+    game.captureIdx = 0;
+    Sound.energize();
+  }
+  if (!game.chained.has(k)) {
+    game.chained.add(k);
+    addScore(PTS_LINK);
+    Sound.link();
+    if (game.chained.size === CHAINABLE.length) roundWon();
+  }
+}
+function roundWon() {
+  flashMsg('ROUND ' + game.level + ' CLEAR');
+  startRound(game.level + 1);
+}
+
+/* ---- Test mode — sourced: * # * on the title screen. ------------------- */
+const TestMode = (() => {
+  const SEQ = ['*', '#', '*'];
+  let idx = 0, armed = false, round = 1, lives = 0, blinkT = 0;
+  function press(ch) {
+    if (game.state !== 'title') return;
+    if (armed) {
+      if (ch === '+') round = Math.min(99, round + 1);
+      if (ch === '-') round = Math.max(1, round - 1);
+      return;
+    }
+    if (ch === SEQ[idx]) { idx++; if (idx === SEQ.length) { armed = true; round = 1; } }
+    else idx = ch === SEQ[0] ? 1 : 0;
+  }
+  function tick(dt) { blinkT += dt; }
+  function reset() { idx = 0; armed = false; round = 1; lives = 0; }
+  return {
+    press, tick, reset,
+    set(r, l) { armed = true; round = r; lives = l || 0; },   // sim's jump path
+    get armed() { return armed; }, get round() { return round; },
+    get lives() { return lives; }, get blinkT() { return blinkT; }
+  };
+})();
+
+/* ---- Entry / leaderboard (shared protocol) ----------------------------- */
+function startEntryOrTitle() {
+  /* Test Score law — sourced: cheated scores don't rank. */
+  if (!game.testMode && HiScore.qualifies(game.score)) {
+    game.entry = { chars: [0,0,0], slot: 0, hold: 0, pl: true, pr: true, pf: true };
+    game.state = 'entry';
+  } else {
+    TestMode.reset();
+    game.state = 'title';
+  }
+}
+function updateEntry(dt) {
+  const e = game.entry;
+  const L = held.left(), Rr = held.right(), OK = held.fire();
+  const cyc = d => { e.chars[e.slot] = (e.chars[e.slot] + d + LETTERS.length) % LETTERS.length; };
+  e.hold -= dt;
+  if (L  && !e.pl) { cyc(-1); e.hold = 380; }
+  if (Rr && !e.pr) { cyc(+1); e.hold = 380; }
+  if ((L || Rr) && e.hold <= 0) { cyc(L ? -1 : +1); e.hold = 110; }
+  if (OK && !e.pf) advanceEntry();
+  e.pl = L; e.pr = Rr; e.pf = OK;
+  firePrev = OK;
+}
+function advanceEntry() {
+  const e = game.entry;
+  if (!e) return;
+  e.slot++;
+  if (e.slot > 2) {
+    game.lastRank = HiScore.add(e.chars.map(i => LETTERS[i]).join(''), game.score);
+    game.entry = null;
+    game.state = 'title';
+  }
+}
+function toTitle() {
+  if (game.state === 'title') return;
+  game.paused = false;
+  game.entry = null;
+  TestMode.reset();
+  game.state = 'title';
+}
+
+/* ---- Render ------------------------------------------------------------ */
+function render() {
+  const now = performance.now();
+  cx.fillStyle = TI.black;
+  cx.fillRect(0, 0, W, H);
+
+  text('SCORE', 4, 2, TI.gray);
+  text(String(game.score).padStart(6,'0'), 40, 2, TI.white);
+  const hs = 'HI ' + String(Math.max(topScore(), game.testMode ? 0 : game.score)).padStart(6,'0');
+  text(hs, W - textW(hs) - 4, 2, TI.gray);
+  if (Sound.muted) center('SOUND OFF', 2, '#555');
+
+  if (game.state === 'title') { renderTitle(now); return; }
+  if (game.state === 'entry') { renderEntry(now); return; }
+
+  const invisible = !!game.logos;
+
+  /* maze walls — hidden on invisible rounds (the ledger goes dark) */
+  if (!invisible) {
+    cx.fillStyle = TI.darkBlue;
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++) {
+        const ch = at(c, r);
+        if (ch === '#') cx.fillRect(OX + c * T + 1, OY + r * T + 1, T - 2, T - 2);
+        if (ch === '-') cx.fillRect(OX + c * T, OY + r * T + 3, T, 1);
+      }
+  }
+
+  if (invisible) {
+    /* TI logos where cells remain */
+    for (const k of game.logos) {
+      const [c, r] = k.split(',').map(Number);
+      draw(LOGO, OX + c * T + 1, OY + r * T + 1, TI.lightYellow);
+    }
+  } else {
+    /* the chain — links with bars to chained neighbours: the interlock */
+    cx.fillStyle = TI.lightGreen;
+    for (const k of game.chained) {
+      const [c, r] = k.split(',').map(Number);
+      const x = OX + c * T, y = OY + r * T;
+      cx.fillRect(x + 3, y + 3, 2, 2);
+      if (game.chained.has(key(c + 1, r)) ||
+          (isWarpRow(r) && c === COLS - 1 && game.chained.has(key(0, r))))
+        cx.fillRect(x + 5, y + 3, 3, 2);
+      if (game.chained.has(key(c - 1, r)) ||
+          (isWarpRow(r) && c === 0 && game.chained.has(key(COLS - 1, r))))
+        cx.fillRect(x, y + 3, 3, 2);
+      if (game.chained.has(key(c, r + 1))) cx.fillRect(x + 3, y + 5, 2, 3);
+      if (game.chained.has(key(c, r - 1))) cx.fillRect(x + 3, y, 2, 3);
+    }
+    /* energizers blink */
+    for (const k of game.energizersLeft) {
+      const [c, r] = k.split(',').map(Number);
+      if ((now / 250 | 0) % 2)
+        draw(LOGO, OX + c * T + 1, OY + r * T + 1, TI.white);
+    }
+  }
+
+  /* hoonos */
+  for (const h of game.hoonos) {
+    if (h.hidden && !h.eyes && game.fright <= 0) continue;    // yellow's trick
+    const spr = h.eyes ? EYES : (game.level % 2 ? HOONO_A : HOONO_B);
+    let col = HOONO_COLORS[h.i].col;
+    if (h.eyes) col = TI.gray;
+    else if (game.fright > 0)
+      /* sourced: "the Hoonos turn black". Pure black on our black field
+         would be invisible, so: dark body on a faint backing square —
+         readable as "black", still clearly powered-down. [ASSUMED
+         visibility adaptation] Blinks near the end, Pac precedent. */
+      col = game.fright < 1600 && ((now / 180 | 0) % 2) ? TI.gray : '#444';
+    if (game.fright > 0 && !h.eyes) {
+      cx.fillStyle = '#1b1b1b';
+      cx.fillRect((h.x - 4) | 0, (h.y - 4) | 0, 8, 8);
+    }
+    draw(spr, h.x - 3.5, h.y - 3.5, col);
+  }
+
+  /* player — mouth chomps along movement */
+  const P = game.player;
+  if (P && game.state !== 'dying') {
+    const open = (P.mouth / 120 | 0) % 2;
+    draw(open ? MM_OPEN : MM_SHUT, P.x - 3.5, P.y - 3.5, TI.lightYellow);
+  } else if (game.state === 'dying' && P) {
+    if ((now / 100 | 0) % 2) draw(MM_SHUT, P.x - 3.5, P.y - 3.5, TI.darkRed);
+  }
+
+  /* bottom HUD */
+  cx.fillStyle = '#1a1a1a'; cx.fillRect(0, H - 12, W, 12);
+  for (let i = 0; i < Math.min(game.lives, 5); i++)
+    draw(MM_SHUT, 6 + i * 11, H - 10, TI.lightYellow);
+  const lv = 'ROUND ' + game.level;
+  text(lv, W - textW(lv) - 4, H - 9, TI.darkYellow);
+  if (game.testMode) center('TEST', H - 9, TI.mediumRed);
+  const left = game.logos ? game.logos.size : (CHAINABLE.length - game.chained.size);
+  text(String(left).padStart(3, '0'), 120, H - 9, '#555');
+
+  if (game.levelFlashT > 0)
+    center(invisible ? 'DARK ROUND - EAT THE LOGOS' : 'ROUND ' + game.level, 96, TI.lightYellow);
+  if (game.msg) center(game.msg.text, 106, TI.lightYellow);
+  if (game.paused) center('PAUSED', 90, TI.lightYellow);
+  if (game.state === 'over') {
+    center('GAME OVER', 84, TI.mediumRed);
+    if (game.testMode) center('TEST SCORE - NOT RANKED', 98, TI.mediumRed);
+    else if (HiScore.qualifies(game.score)) center('NEW HIGH SCORE', 98, TI.lightYellow);
+    center('FIRE TO CONTINUE', 112, TI.gray);
+  }
+}
+
+function renderTitle(now) {
+  center('MUNCH MAN', 30, TI.lightYellow);
+  center('TI-99/4A - 1982', 44, '#444');
+  const list = HiScore.list();
+  center('HIGH SCORES', 60, TI.cyan);
+  if (!list.length) center('NO SCORES YET', 74, '#555');
+  else {
+    let y = 72;
+    list.slice(0, 6).forEach((e, i) => {
+      const fresh = game.lastRank === i + 1;
+      const blink = fresh && ((now/300|0) % 2);
+      const col = blink ? TI.white : fresh ? TI.lightYellow : TI.gray;
+      text(String(i+1), 66, y, '#555');
+      text(e.n, 80, y, col);
+      text(String(e.s).padStart(6,'0'), 112, y, col);
+      y += 9;
+    });
+  }
+  center(matchMedia('(hover: none)').matches ? 'TAP GO TO START' : 'PRESS SPACE TO START',
+         134, ((now/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
+  center('LAY THE CHAIN - FILL THE MAZE', 150, '#555');
+  center('THE ENERGIZER MAKES YOU FASTER', 160, '#555');
+  if (TestMode.armed) {
+    center('TEST MODE - ROUND ' + TestMode.round + '  [+/-]', 172, TI.mediumRed);
+    center('SCORES WILL NOT RANK', 181, '#844');
+  }
+}
+function renderEntry(now) {
+  center('NEW HIGH SCORE', 50, TI.lightYellow);
+  center(String(game.score), 66, TI.white);
+  center('ENTER YOUR INITIALS', 84, '#666');
+  const e = game.entry;
+  for (let i = 0; i < 3; i++) {
+    const x = (W/2|0) - 21 + i*16;
+    const active = i === e.slot;
+    const blink = active && ((now/300|0) % 2);
+    text(LETTERS[e.chars[i]], x, 102, blink ? TI.white : active ? TI.lightYellow : TI.gray);
+    if (active) { cx.fillStyle = TI.lightYellow; cx.fillRect(x, 112, 5, 1); }
+  }
+  center(matchMedia('(hover: none)').matches
+    ? 'SWIVEL PICKS - GO LOCKS IN'
+    : 'ARROWS OR TYPE - SPACE LOCKS IN', 132, '#555');
+}
+
+/* ---- Input ------------------------------------------------------------- */
+const keys = Object.create(null);
+addEventListener('keydown', e => {
+  if (Feedback.isOpen) {
+    if (e.key === 'Escape') Feedback.close();
+    return;
+  }
+  if ([' ','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  Sound.unlock();
+  if (e.key === 'p' || e.key === 'P') { if (game.state === 'play') game.paused = !game.paused; }
+  if (e.key === 'm' || e.key === 'M') Sound.toggle();
+  if (e.key === 'f' || e.key === 'F') Feedback.open();
+  if (e.key === 'Escape') toTitle();
+  if (['*','#','+','-'].includes(e.key)) TestMode.press(e.key);
+  if (game.state === 'entry' && game.entry) {
+    const up = e.key.toUpperCase();
+    if (up.length === 1 && LETTERS.includes(up)) {
+      game.entry.chars[game.entry.slot] = LETTERS.indexOf(up);
+      advanceEntry();
+    } else if (e.key === 'Backspace' && game.entry.slot > 0) {
+      game.entry.slot--;
+    }
+  }
+});
+addEventListener('keyup', e => { if (Feedback.isOpen) return; keys[e.key] = false; });
+
+const touch = { left:false, right:false, up:false, down:false, fire:false };
+function bindPad(id, prop) {
+  const el = document.getElementById(id);
+  const on  = e => { e.preventDefault(); Sound.unlock(); touch[prop] = true;  };
+  const off = e => { e.preventDefault(); touch[prop] = false; };
+  el.addEventListener('touchstart', on,  {passive:false});
+  el.addEventListener('touchend',   off, {passive:false});
+  el.addEventListener('touchcancel',off, {passive:false});
+  el.addEventListener('mousedown',  on);
+  el.addEventListener('mouseup',    off);
+  el.addEventListener('mouseleave', off);
+}
+bindPad('bL','left'); bindPad('bR','right'); bindPad('bU','up');
+bindPad('bD','down'); bindPad('bF','fire');
+
+function bindTap(id, fn) {
+  const el = document.getElementById(id);
+  const h = e => { e.preventDefault(); Sound.unlock(); fn(); };
+  el.addEventListener('touchstart', h, {passive:false});
+  el.addEventListener('click', h);
+}
+bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
+bindTap('bT', () => toTitle());
+bindTap('bM', () => Sound.toggle());
+bindTap('bFB', () => Feedback.open());
+
+/* ---- SWIVEL STICK — shared contract, four-way for the maze. ------------ */
+const Stick = (() => {
+  const DEAD = 9;
+  let stickId = null, ox = 0, oy = 0, cxp = 0, cyp = 0, fireId = null;
+  const state = { active:false, ox:0, dx:0, dy:0 };
+  function apply() {
+    const dx = cxp - ox, dy = cyp - oy;
+    state.dx = dx; state.dy = dy;
+    /* dominant axis wins — a maze wants four-way, not diagonals */
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    touch.left  = state.active && dx < -DEAD && ax >= ay;
+    touch.right = state.active && dx >  DEAD && ax >= ay;
+    touch.up    = state.active && dy < -DEAD && ay >  ax;
+    touch.down  = state.active && dy >  DEAD && ay >  ax;
+  }
+  function start(e) {
+    const r = cv.getBoundingClientRect();
+    for (const t of e.changedTouches) {
+      const leftHalf = (t.clientX - r.left) < r.width / 2;
+      if (leftHalf && stickId === null) {
+        stickId = t.identifier; ox = cxp = t.clientX; oy = cyp = t.clientY;
+        state.active = true; state.ox = t.clientX - r.left;
+      } else if (!leftHalf && fireId === null) {
+        fireId = t.identifier; touch.fire = true;
+      }
+    }
+    apply(); e.preventDefault(); Sound.unlock();
+  }
+  function move(e) {
+    for (const t of e.changedTouches) if (t.identifier === stickId) { cxp = t.clientX; cyp = t.clientY; }
+    apply(); e.preventDefault();
+  }
+  function end(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = null; state.active = false;
+                                      touch.left = touch.right = touch.up = touch.down = false; }
+      if (t.identifier === fireId)  { fireId = null; touch.fire = false; }
+    }
+    apply();
+  }
+  cv.addEventListener('touchstart',  start, { passive:false });
+  cv.addEventListener('touchmove',   move,  { passive:false });
+  cv.addEventListener('touchend',    end,   { passive:false });
+  cv.addEventListener('touchcancel', end,   { passive:false });
+  return state;
+})();
+
+/* Virtual input for the sim harness — bots drive THESE and nothing else. */
+const simInput = { left:false, right:false, up:false, down:false, fire:false };
+const held = {
+  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right || simInput.right,
+  up:    () => keys['ArrowUp']    || keys['w'] || keys['W'] || touch.up    || simInput.up,
+  down:  () => keys['ArrowDown']  || keys['s'] || keys['S'] || touch.down  || simInput.down,
+  fire:  () => keys[' '] || keys['Enter'] || touch.fire || simInput.fire
+};
+
+/* ---- HIGH SCORE TABLE — shared protocol -------------------------------- */
+const HiScore = (() => {
+  const KEY = 'arcade.munchman.scores', MAX = 8;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+                       catch (e) { return []; } };
+  const store = l => { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} };
+  return {
+    list: load,
+    qualifies(score) {
+      if (score <= 0) return false;
+      const l = load();
+      return l.length < MAX || score > l[l.length - 1].s;
+    },
+    add(name, score) {
+      const l = load();
+      l.push({ n: name, s: score, d: new Date().toISOString().slice(0, 10) });
+      l.sort((a, b) => b.s - a.s);
+      const cut = l.slice(0, MAX);
+      store(cut);
+      return cut.findIndex(e => e.s === score && e.n === name) + 1;
+    },
+    clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  };
+})();
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+function topScore() { const l = HiScore.list(); return l.length ? l[0].s : 0; }
+
+/* ---- FEEDBACK — shared contract (extended to rung 6). ------------------ */
+const Feedback = (() => {
+  const ISSUES = 'https://github.com/Sobevista/arcade-progression/issues/new';
+  const root = document.getElementById('fb');
+  const ta = document.getElementById('fbText');
+  const ctxEl = document.getElementById('fbCtx');
+  const note = document.getElementById('fbNote');
+  let isOpen = false;
+  function context() {
+    return [
+      'game: MUNCH MAN (rung 6, TI-99/4A)',
+      'state: ' + game.state + (game.paused ? ' (paused)' : '') +
+        (game.testMode ? '  TEST MODE' : ''),
+      'round: ' + game.level + '  chained: ' +
+        (game.chained ? game.chained.size : 0) + '/' + CHAINABLE.length,
+      'score: ' + game.score + '  top: ' + topScore(),
+      'date: ' + new Date().toISOString(),
+      'viewport: ' + window.innerWidth + 'x' + window.innerHeight + ' @' + scale + 'x' +
+        (document.body.classList.contains('touch') ? ' touch' : ''),
+      'ua: ' + navigator.userAgent
+    ].join('\n');
+  }
+  function buildReport() {
+    const t = ta.value.trim();
+    return '### Playtest report\n\n' + (t || '(no text entered)') +
+           '\n\n---\n```\n' + context() + '\n```\n';
+  }
+  function open() {
+    if (isOpen) return;
+    isOpen = true;
+    if (game.state === 'play') game.paused = true;
+    for (const k in keys) keys[k] = false;
+    touch.left = touch.right = touch.up = touch.down = touch.fire = false;
+    note.textContent = '';
+    ctxEl.textContent = context();
+    root.classList.add('open');
+    ta.focus();
+  }
+  function close() {
+    if (!isOpen) return;
+    isOpen = false;
+    root.classList.remove('open');
+    ta.blur();
+  }
+  document.getElementById('fbClose').addEventListener('click', close);
+  document.getElementById('fbGh').addEventListener('click', () => {
+    const url = ISSUES + '?title=' + encodeURIComponent('[munchman] playtest report') +
+                '&body=' + encodeURIComponent(buildReport());
+    window.open(url, '_blank');
+    note.textContent = 'OPENED GITHUB IN A NEW TAB';
+  });
+  document.getElementById('fbCopy').addEventListener('click', () => {
+    const r = buildReport();
+    const done = () => { note.textContent = 'COPIED - PASTE IT TO DANIEL'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(r).then(done, () => fallback());
+    } else fallback();
+    function fallback() {
+      ta.value = r; ta.select();
+      try { document.execCommand('copy'); done(); }
+      catch (e) { note.textContent = 'COPY FAILED - SELECT AND COPY BY HAND'; }
+    }
+  });
+  return { open, close, buildReport, get isOpen() { return isOpen; } };
+})();
+
+/* ---- Loop -------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(50, now - last);   // INV-2
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---- Test hook (INV-6) + sim contract ---------------------------------- */
+window.__munchman = {
+  get state()   { return game.state; },
+  get score()   { return game.score; },
+  get chainedCount() { return game.chained ? game.chained.size : 0; },
+  get chainableTotal() { return CHAINABLE.length; },
+  game, newGame, startRound, respawn, toTitle, Sound, HiScore, LETTERS,
+  startEntryOrTitle, advanceEntry, topScore, Stick, TI, Feedback, TestMode,
+  MAZE_ROWS, CHAINABLE, ENERGIZERS, at, canGo, isWarpRow, cellOf, dist,
+  frightDur, hoonoMul,
+  geom: { W, H, COLS, ROWS, T, OX, OY, PADDLE_SPEED: PLAYER_SPEED,
+          PLAYER_SPEED, ENERGIZED_MUL, HOONO_BASE, RAMP_CAP_LEVEL,
+          PTS_LINK, PTS_ENERGIZER, CAPTURE_LADDER, EXTRA_LIFE_EVERY,
+          INVISIBLE_EVERY, PLAYER_SPAWN, DOOR },
+  sim: {
+    input: simInput,
+    step(dt) { update(dt); },
+    reset() { simInput.left = simInput.right = simInput.up = simInput.down = simInput.fire = false; },
+    observe() {
+      const P = game.player;
+      const p = P ? cellOf(P) : null;
+      return { state: game.state, score: game.score, level: game.level,
+               lives: game.lives, fright: game.fright,
+               testMode: game.testMode,
+               chained: game.chained ? game.chained.size : 0,
+               chainableTotal: CHAINABLE.length,
+               energizersLeft: game.energizersLeft ? game.energizersLeft.size : 0,
+               logosLeft: game.logos ? game.logos.size : null,
+               captureIdx: game.captureIdx,
+               paddleX: P ? P.x : 0,
+               player: P ? { x: P.x, y: P.y, c: p.c, r: p.r, dir: P.dir } : null,
+               hoonos: game.hoonos.map(h => ({ name: h.name, x: h.x, y: h.y,
+                 c: cellOf(h).c, r: cellOf(h).r, inPen: h.inPen,
+                 eyes: h.eyes, hidden: h.hidden })) };
+    }
+  }
+};
+</script>

@@ -156,8 +156,11 @@ const Conformance = (() => {
       /* PILOT SCOPE (2026-07-18): piloted on the rung-5 games before fleet
          rollout — Daniel's call after the pilot. Out-of-pilot rungs get a
          LOUD abstention, never a silent pass (INV-19). Fleet rollout =
-         empty this list. */
-      pilotOnly: ['wumpus', 'parsec'],
+         empty this list.
+         2026-07-19: rung-6 games added — new builds conform to the current
+         contract [ASSUMED default, Daniel may strike]. Rungs 2-4 still
+         abstain pending his rollout call. */
+      pilotOnly: ['wumpus', 'parsec', 'munchman', 'anteater'],
       check(g, name) {
         if (!this.pilotOnly.includes(name)) {
           return { pass: null,
@@ -232,7 +235,8 @@ const Conformance = (() => {
     catch (e) { out.problems.push('could not fetch index.html'); }
 
     // A rung is PLAYABLE if its folder is linked as playable in each document.
-    for (const slug of ['02-invaders', '03-breakout', '04-galaga', '05-ti994a', '06-nes']) {
+    for (const slug of ['02-invaders', '03-breakout', '04-galaga', '05-ti994a',
+                        '06-ti994a-2', '07-nes']) {
       const inReadme  = readme.includes('rungs/' + slug + '/');
       const inLanding = landing.includes('rungs/' + slug + '/');
       // "not built" / "queued" markers next to the slug's game name

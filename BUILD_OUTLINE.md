@@ -458,3 +458,45 @@ not an oversight. It should be revisited the moment either becomes true:
   flag, Wumpus clue readability with the kids, Parsec difficulty feel, and the
   feedback button in real testers' hands (its pilot IS the test). Then Daniel:
   W9 ruling, feedback rollout call, release gating for 3/4/5.
+
+- **2026-07-19 — RUNG 6 (TI-99/4A part II: MUNCH MAN + ANTEATER) BUILT AND
+  MACHINE-VERIFIED, archaeology first, same session.** Dig landed before any code:
+  **A-21** (the lawsuit was a level designer — 1981 dots prototype, K.C. Munchkin
+  injunction 1982-03-02, dots→chain / pills→TI logos; the constraint classes now
+  span hardware → manufacturing → business → LAW), **A-22** (you dig your own
+  attack surface — eaters use the player's tunnels), **A-23** (a weapon aimed with
+  time: delayed-fuse eggs, targeting = your own retreat), **A-24** (Romox ECPC:
+  dial-up game delivery to cartridge-burning mall kiosks with royalty accounting,
+  patent 4,597,058 — digital distribution in 1983). Trove now **20 invariants /
+  24 archaeology findings.**
+
+  **Munch Man:** self-validating maze (160 cells, flood-fill assert at load), warp
+  corridors exact, sourced scoring proven to the point (0 arithmetic mismatches
+  across 100 audited bot games), energizer inversion measured (1.35× player speed
+  exactly), Hoono personalities measured (red first-to-catch 36/70 — the sourced
+  intelligence order), dark round 20 + `* # *` Test-Score mode live (TI's own
+  instrument-honesty law, 1982, adopted as the sim's level-jump path). Coverage
+  bot 85/100 level-1 completions vs random 0/100.
+
+  **Anteater:** A-22 rule held binarily (0 eater-in-dirt violations across every
+  run, self-instrumented), tunnel speed asymmetry live, round-trip economy exact
+  (extra ant on all 5 observed set completions), eggs/rocks/ceilings all proven.
+
+  **INV-20 earned** (float overshoot past a cell centre skips the rules check —
+  yellow walked through a wall once in ~60 games; snap-to-centre fix proven by an
+  80-game containment sweep). **Honest misses on the record:** ramp cap first set
+  ABOVE the playability wall (bot proved round 20 unwinnable at 135%; retuned to
+  108%; human winnability still open), and **T9's 10× kiting bar was a guess —
+  measured timing premium is 3× over a skilled-movement null (all-random null: 0
+  kills). Flagged for Daniel's ruling, not silently re-barred (W9 precedent).**
+
+  Feedback contract extended to both rung-6 games [ASSUMED default — Daniel may
+  strike]; rungs 2–4 still abstain loudly. Both games 12/12 CONFORMANT; docs
+  flipped together; `releases.json` untouched. Committed locally — **push is
+  Daniel's** (publishing gate).
+
+  **NEXT ACTION: unchanged — family playtest, now rungs 4+5+6 (Galaga transit-kill
+  flag, Wumpus clues, Parsec feel, Munch Man round-20 winnability, Anteater egg
+  timing feel, feedback button in real hands). Daniel's calls stacked behind it:
+  T9 bar ruling, feedback rollout to 2–4, release gating. Next build pair: NES
+  (rung 7), fresh chat, archaeology first.**

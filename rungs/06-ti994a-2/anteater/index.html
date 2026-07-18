@@ -1,0 +1,1054 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>ANTEATER — rung 6</title>
+
+<style>
+  :root { --ti-black:#000000; --ti-gray:#CCCCCC; }
+  /* html must NOT be a flex container — see the note in rung 3 (INV-17). */
+  html { margin:0; height:100%; }
+  body {
+    margin:0; min-height:100%; width:100%; box-sizing:border-box;
+    background:var(--ti-black); color:var(--ti-gray);
+    font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; overflow:hidden; touch-action:none; user-select:none;
+  }
+  canvas { image-rendering:pixelated; display:block; }
+  #pad, #pad2 { display:none; }
+  #pad { width:100%; justify-content:space-between;
+         padding:0 10px; box-sizing:border-box; gap:8px; }
+  #pad button { flex:1 1 0; max-width:190px; height:76px;
+    font:inherit; font-size:24px;
+    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:12px; }
+  #pad2 { gap:8px; margin-bottom:4px; }
+  #pad2 button { width:78px; height:30px; font:inherit; font-size:11px;
+    background:#0a0a0a; color:#777; border:2px solid #242424; border-radius:8px; }
+  #pad button:active, #pad2 button:active { background:#222; }
+  body.touch #pad, body.touch #pad2 { display:flex; }
+  #hint { font-size:12px; color:#555; letter-spacing:1px; }
+  body.touch #hint { display:none; }
+
+  /* Feedback overlay — shared contract (rung 5 pilot, extended to rung 6). */
+  #fb { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.86);
+        z-index:10; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+  #fb.open { display:flex; }
+  #fb .box { width:min(92vw,420px); background:#0a0a0a; border:2px solid #333;
+             border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  #fb h2 { margin:0; font-size:14px; color:var(--ti-gray); letter-spacing:1px; }
+  #fb textarea { width:100%; box-sizing:border-box; height:110px; resize:none;
+                 background:#000; color:var(--ti-gray); border:1px solid #333;
+                 border-radius:6px; font:inherit; font-size:13px; padding:8px; }
+  #fb .ctx { font-size:10px; color:#555; white-space:pre-wrap; }
+  #fb .row { display:flex; gap:8px; }
+  #fb .row button { flex:1; height:40px; font:inherit; font-size:12px;
+                    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:8px; }
+  #fb .row button:active { background:#222; }
+  #fb .note { font-size:10px; color:#4a4; min-height:12px; }
+</style>
+
+<div id="pad2">
+  <button id="bP" aria-label="pause">PAUSE</button>
+  <button id="bT" aria-label="title">TITLE</button>
+  <button id="bM" aria-label="sound">SOUND</button>
+  <button id="bFB" aria-label="feedback">FEEDBACK</button>
+</div>
+<canvas id="screen"></canvas>
+<div id="pad">
+  <button id="bL" aria-label="left">&#9664;</button>
+  <button id="bU" aria-label="up">&#9650;</button>
+  <button id="bF" aria-label="egg">EGG</button>
+  <button id="bD" aria-label="down">&#9660;</button>
+  <button id="bR" aria-label="right">&#9654;</button>
+</div>
+<div id="hint">ARROWS DIG &nbsp;&middot;&nbsp; SPACE EGG &nbsp;&middot;&nbsp; F FEEDBACK &nbsp;&middot;&nbsp; M SOUND &nbsp;&middot;&nbsp; ESC TITLE</div>
+
+<div id="fb">
+  <div class="box">
+    <h2>REPORT / FEEDBACK</h2>
+    <textarea id="fbText" placeholder="What did you see? What felt wrong or great?"></textarea>
+    <div class="ctx" id="fbCtx"></div>
+    <div class="row">
+      <button id="fbGh">SEND TO GITHUB</button>
+      <button id="fbCopy">COPY REPORT</button>
+      <button id="fbClose">CLOSE</button>
+    </div>
+    <div class="note" id="fbNote"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   ANTEATER — rung 6b of the progression. Romox, 1983 (TI 102) — third
+   party, Q2 1983, $39.95. Single file, vanilla JS, Canvas 2D, zero
+   dependencies. Raster: 256x192, the TI-99/4A's own.
+
+   The rung's theses:
+   A-22 — you are the ANT. Tunnels you dig persist, and the anteaters can
+   use them: your mobility infrastructure IS your attack surface. Points
+   come only from round trips (colony -> surface food -> colony), and the
+   surface is where the predators wait.
+   A-23 — the weapon is a TIMER: delayed-fuse eggs aimed by retracing
+   your steps, usable only because the ant out-runs the eater in tunnels.
+
+   Sourced: ant digs persistent tunnels; eaters wait above ground and can
+   enter dug tunnels; ant faster than eater in tunnels; five delayed-fuse
+   eggs; rocks fall when undermined and crush a close follower; 4 food
+   items per set, delivering all = extra ant; eater count/speed rise per
+   set (1/2/3...); one- or two-player (two-player SKIPPED v1).
+   Scoring values, fuse seconds, dig rates: [ASSUMED, tuned by play].
+   ========================================================================= */
+
+/* ---- TI-99/4A palette (TMS9918A) ------------------------------------- */
+const TI = {
+  black:'#000000', mediumGreen:'#21C842', lightGreen:'#5EDC78',
+  darkBlue:'#5455ED', lightBlue:'#7D76FC', darkRed:'#D4524D',
+  cyan:'#42EBF5',    mediumRed:'#FC5554',  lightRed:'#FF7978',
+  darkYellow:'#D4C154', lightYellow:'#E6CE80', darkGreen:'#21B03B',
+  magenta:'#C95BBA', gray:'#CCCCCC', white:'#FFFFFF'
+};
+
+/* ---- Sound ------------------------------------------------------------- */
+const Sound = (() => {
+  let ac = null, muted = false;
+  const ctx = () => ac || (ac = new (window.AudioContext || window.webkitAudioContext)());
+  function tone({ freq, to = null, dur = 0.1, type = 'square', vol = 0.12, at = 0 }) {
+    if (muted || !ac) return;
+    const c = ac, t0 = c.currentTime + at;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    if (to !== null) o.frequency.linearRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function noise({ dur = 0.2, vol = 0.2 }) {
+    if (muted || !ac) return;
+    const c = ac, n = Math.max(1, Math.floor(c.sampleRate * dur));
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = c.createBufferSource(); s.buffer = buf;
+    const g = c.createGain(); g.gain.value = vol;
+    s.connect(g).connect(c.destination);
+    s.start();
+  }
+  return {
+    unlock() { const c = ctx(); if (c.state === 'suspended') c.resume(); },
+    toggle() { muted = !muted; return muted; },
+    get muted() { return muted; },
+    dig()     { tone({ freq: 140, dur: 0.03, type:'square', vol: 0.04 }); },
+    pickup()  { tone({ freq: 600, to: 900, dur: 0.1, type:'square', vol: 0.08 }); },
+    deliver() { [659,784,1047].forEach((f,i) =>
+                  tone({ freq:f, dur:0.08, type:'square', vol:0.09, at:i*0.07 })); },
+    egg()     { tone({ freq: 500, dur: 0.05, type:'square', vol: 0.08 }); },
+    boom()    { noise({ dur: 0.35, vol: 0.22 });
+                tone({ freq: 160, to: 50, dur: 0.35, type:'sawtooth', vol: 0.12 }); },
+    rock()    { noise({ dur: 0.25, vol: 0.15 });
+                tone({ freq: 90, to: 45, dur: 0.3, type:'square', vol: 0.1 }); },
+    death()   { noise({ dur: 0.5, vol: 0.2 });
+                tone({ freq: 400, to: 60, dur: 0.55, type: 'sawtooth', vol: 0.1 }); },
+    set()     { [523,659,784,1047].forEach((f,i) =>
+                  tone({ freq:f, dur:0.09, type:'square', vol:0.08, at:i*0.08 })); },
+    extra()   { [784,988,1175,1568].forEach((f,i) =>
+                  tone({ freq:f, dur:0.09, type:'square', vol:0.09, at:i*0.08 })); }
+  };
+})();
+
+/* ---- Logical screen — the TI-99/4A's own raster ------------------------ */
+const W = 256, H = 192;
+const cv = document.getElementById('screen');
+const cx = cv.getContext('2d', { alpha:false });
+
+let scale = 1;
+function fit() {
+  const availW = window.innerWidth  - 16;
+  const availH = window.innerHeight - (document.body.classList.contains('touch') ? 150 : 60);
+  scale = Math.max(1, Math.floor(Math.min(availW / W, availH / H)));   // INV-7
+  cv.width = W; cv.height = H;
+  cv.style.width  = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cx.imageSmoothingEnabled = false;
+}
+if (matchMedia('(hover: none)').matches) document.body.classList.add('touch');
+addEventListener('resize', fit);
+fit();
+
+/* ---- Font (5x7) -------------------------------------------------------- */
+const GLYPHS = {
+ '0':'11111 10001 10001 10001 10001 10001 11111','1':'00100 01100 00100 00100 00100 00100 01110',
+ '2':'11111 00001 00001 11111 10000 10000 11111','3':'11111 00001 00001 11111 00001 00001 11111',
+ '4':'10001 10001 10001 11111 00001 00001 00001','5':'11111 10000 10000 11111 00001 00001 11111',
+ '6':'11111 10000 10000 11111 10001 10001 11111','7':'11111 00001 00010 00100 01000 01000 01000',
+ '8':'11111 10001 10001 11111 10001 10001 11111','9':'11111 10001 10001 11111 00001 00001 11111',
+ 'A':'01110 10001 10001 11111 10001 10001 10001','B':'11110 10001 10001 11110 10001 10001 11110',
+ 'C':'01111 10000 10000 10000 10000 10000 01111','D':'11110 10001 10001 10001 10001 10001 11110',
+ 'E':'11111 10000 10000 11110 10000 10000 11111','F':'11111 10000 10000 11110 10000 10000 10000',
+ 'G':'01111 10000 10000 10111 10001 10001 01111','H':'10001 10001 10001 11111 10001 10001 10001',
+ 'I':'11111 00100 00100 00100 00100 00100 11111','J':'00011 00001 00001 00001 00001 10001 01110',
+ 'K':'10001 10010 10100 11000 10100 10010 10001','L':'10000 10000 10000 10000 10000 10000 11111',
+ 'M':'10001 11011 10101 10101 10001 10001 10001','N':'10001 11001 10101 10011 10001 10001 10001',
+ 'O':'01110 10001 10001 10001 10001 10001 01110','P':'11110 10001 10001 11110 10000 10000 10000',
+ 'Q':'01110 10001 10001 10001 10101 10010 01101','R':'11110 10001 10001 11110 10100 10010 10001',
+ 'S':'01111 10000 10000 01110 00001 00001 11110','T':'11111 00100 00100 00100 00100 00100 00100',
+ 'U':'10001 10001 10001 10001 10001 10001 01110','V':'10001 10001 10001 10001 10001 01010 00100',
+ 'W':'10001 10001 10001 10101 10101 11011 10001','X':'10001 01010 00100 00100 00100 01010 10001',
+ 'Y':'10001 01010 00100 00100 00100 00100 00100','Z':'11111 00001 00010 00100 01000 10000 11111',
+ ' ':'00000 00000 00000 00000 00000 00000 00000','-':'00000 00000 00000 11111 00000 00000 00000',
+ '<':'00010 00100 01000 10000 01000 00100 00010','>':'01000 00100 00010 00001 00010 00100 01000',
+ ':':'00000 00100 00100 00000 00100 00100 00000','!':'00100 00100 00100 00100 00100 00000 00100',
+ '.':'00000 00000 00000 00000 00000 00000 00100','/':'00001 00010 00010 00100 01000 01000 10000'
+};
+function text(str, x, y, color) {
+  cx.fillStyle = color;
+  let px = x;
+  for (const ch of str.toUpperCase()) {
+    const g = GLYPHS[ch] || GLYPHS[' '];
+    g.split(' ').forEach((row, r) => {
+      for (let c = 0; c < 5; c++) if (row[c] === '1') cx.fillRect(px + c, y + r, 1, 1);
+    });
+    px += 6;
+  }
+}
+const textW = s => s.length * 6 - 1;
+const center = (s, y, color) => text(s, ((W - textW(s)) / 2) | 0, y, color);
+
+/* ---- World grid -------------------------------------------------------- */
+/* Row 0 is the SURFACE (open air, where food sits and eaters prowl).
+   Rows 1..ROWS-1 are dirt. Cell codes: 0 dirt, 1 air/tunnel, 2 rock
+   embedded in dirt, 3 rock at rest (solid, undiggable). */
+const COLS = 30, ROWS = 18, T = 8;
+const OX = (W - COLS * T) / 2, OY = 16;
+const DIRT = 0, AIR = 1, ROCK = 2, ROCK_SET = 3;
+const COLONY = { c: 2, r: ROWS - 2 };          // the nest chamber, bottom-left
+const FOOD_COUNT = 4, EGGS_PER_ANT = 5;        // sourced counts
+
+/* Tuning. Speeds px/ms. [ASSUMED, tuned by play] */
+const ANT_TUNNEL = 0.056, ANT_DIG_MUL = 0.5, ANT_SURFACE = 0.05;
+const EATER_SURFACE = 0.046, EATER_TUNNEL = 0.038;   // < ANT_TUNNEL — sourced asymmetry
+const EGG_FUSE = 2000, EGG_WOBBLE = 350;             // [ASSUMED seconds-class fuse]
+const ROCK_WOBBLE = 420;
+const EATER_CAP = 4, SPEED_CAP_SET = 6;              // A-18: AUTHORED ceilings
+const setSpeedMul = s => 1 + (Math.min(s, SPEED_CAP_SET) - 1) * 0.09;
+const eaterCount  = s => Math.min(s, EATER_CAP);     // sourced 1/2/3..., capped
+const PTS_DELIVER = 200, PTS_EGG_KILL = 100, PTS_ROCK_KILL = 300;  // [ASSUMED]
+
+/* ---- Sprites ----------------------------------------------------------- */
+function sprite(rows) {
+  return { w: rows[0].length, h: rows.length,
+           bits: rows.map(r => [...r].map(c => c === 'X' ? 1 : 0)) };
+}
+const ANT    = sprite(['..X.X..','...X...','.XXXXX.','X.XXX.X','.XXXXX.','X..X..X']);
+const EATER  = sprite(['XX.....','XXXX...','.XXXXXX','.XXXXXX','.X..X..','.X..X..']);
+const FOOD   = sprite(['..XX..','.XXXX.','XXXXXX','.XXXX.']);
+const EGG    = sprite(['.XX.','XXXX','XXXX','.XX.']);
+const ROCK_S = sprite(['.XXXX.','XXXXXX','XXXXXX','.XXXX.']);
+const BOOM   = sprite(['X..X..X','.X.X.X.','..XXX..','XXXXXXX','..XXX..','.X.X.X.','X..X..X']);
+const HOUSE  = sprite(['...XX...','..XXXX..','.XXXXXX.','XXXXXXXX','.X....X.','.X.XX.X.']);
+
+function draw(s, x, y, color) {
+  cx.fillStyle = color;
+  for (let r = 0; r < s.h; r++)
+    for (let c = 0; c < s.w; c++)
+      if (s.bits[r][c]) cx.fillRect((x|0) + c, (y|0) + r, 1, 1);
+}
+
+/* ---- Game state -------------------------------------------------------- */
+const game = {
+  state: 'title',            // title | play | dying | over | entry
+  paused: false,
+  set: 1, score: 0, ants: 2,
+  grid: null,                // Int8Array COLS*ROWS
+  food: [],                  // { c, r, taken }
+  delivered: 0,
+  ant: null,                 // { x, y, dir, want, carrying(-1|foodIdx), eggs }
+  eaters: [], eggs: [], rocks: [], booms: [],
+  eaterViolations: 0,        // T3 self-instrumentation: eater in dirt = bug
+  dyingT: 0, msg: null, setFlashT: 0,
+  entry: null, lastRank: 0,
+  time: 0
+};
+const idx = (c, r) => r * COLS + c;
+const cell = (c, r) => (c < 0 || c >= COLS || r < 0 || r >= ROWS) ? -1 : game.grid[idx(c, r)];
+const passable = v => v === AIR;
+const diggable = v => v === DIRT || v === ROCK;   // ROCK: digging THROUGH is
+/* not allowed — you dig the cell UNDER it. Entering a ROCK cell is blocked;
+   see canGoAnt. */
+
+function buildField() {
+  const g = new Int8Array(COLS * ROWS);          // all DIRT
+  for (let c = 0; c < COLS; c++) g[idx(c, 0)] = AIR;          // surface
+  /* colony chamber: 3 cells, pre-dug — the only given infrastructure */
+  [[COLONY.c - 1, COLONY.r], [COLONY.c, COLONY.r], [COLONY.c + 1, COLONY.r]]
+    .forEach(([c, r]) => g[idx(c, r)] = AIR);
+  game.grid = g;
+  /* rocks: embedded mid-field, never over the colony column [ASSUMED count] */
+  game.rocks = [];
+  const nRocks = 5;
+  let placed = 0, guard = 200;
+  while (placed < nRocks && guard-- > 0) {
+    const c = 1 + ((Math.random() * (COLS - 2)) | 0);
+    const r = 2 + ((Math.random() * 8) | 0);
+    if (Math.abs(c - COLONY.c) < 3) continue;
+    if (g[idx(c, r)] !== DIRT || game.rocks.some(k => k.c === c && Math.abs(k.r - r) < 2)) continue;
+    g[idx(c, r)] = ROCK;
+    game.rocks.push({ c, r, state: 'set', t: 0, y: 0 });      // y used while falling
+    placed++;
+  }
+  /* food on the surface, spread out, none directly above the colony */
+  game.food = [];
+  const slots = [];
+  for (let c = 4; c < COLS - 1; c += 2) if (Math.abs(c - COLONY.c) > 3) slots.push(c);
+  for (let i = 0; i < FOOD_COUNT; i++) {
+    const s = slots.splice((Math.random() * slots.length) | 0, 1)[0];
+    game.food.push({ c: s, r: 0, taken: false });
+  }
+  game.delivered = 0;
+}
+
+function makeAnt() {
+  return { x: OX + (COLONY.c + 0.5) * T, y: OY + (COLONY.r + 0.5) * T,
+           dir: null, want: null, carrying: -1, eggs: EGGS_PER_ANT, anim: 0 };
+}
+function makeEater(i) {
+  const fromLeft = i % 2 === 0;
+  return { x: OX + (fromLeft ? 0.5 : COLS - 0.5) * T, y: OY + 0.5 * T,
+           dir: fromLeft ? 'right' : 'left', repathT: 0 };
+}
+
+/* INV-11: one function per lifecycle event. */
+function newGame() {
+  game.score = 0; game.ants = 2; game.lastRank = 0;
+  game.paused = false; game.msg = null; game.eaterViolations = 0;
+  startSet(1);
+  game.state = 'play';
+}
+function startSet(n) {
+  game.set = n;
+  buildField();                                   // fresh dirt [ASSUMED per set]
+  game.ant = makeAnt();
+  game.eaters = Array.from({ length: eaterCount(n) }, (_, i) => makeEater(i));
+  game.eggs = []; game.booms = [];
+  game.setFlashT = 1400;
+  Sound.set();
+}
+function respawn() {                              // tunnels PERSIST — A-22 memory
+  if (game.ant && game.ant.carrying >= 0)
+    game.food[game.ant.carrying].taken = false;   // food returns to its spot
+  game.ant = makeAnt();
+  game.eaters = Array.from({ length: eaterCount(game.set) }, (_, i) => makeEater(i));
+  game.eggs = []; game.booms = [];
+}
+function gameOver() { game.state = 'over'; }
+function addScore(p) { game.score += p; }
+function flashMsg(t) { game.msg = { text: t, t: 1300 }; }
+
+/* ---- Grid movement (no warps here; edges are walls) -------------------- */
+const cellOf = e => ({ c: Math.floor((e.x - OX) / T), r: Math.floor((e.y - OY) / T) });
+const centerOf = (c, r) => ({ x: OX + (c + 0.5) * T, y: OY + (r + 0.5) * T });
+const DIRS = { left:[-1,0], right:[1,0], up:[0,-1], down:[0,1] };
+const OPP  = { left:'right', right:'left', up:'down', down:'up' };
+
+function canGoAnt(c, r, dir) {
+  const [dc, dr] = DIRS[dir];
+  const nc = c + dc, nr = r + dr;
+  const v = cell(nc, nr);
+  return v === AIR || v === DIRT;                 // digs dirt; rocks block
+}
+function canGoEater(c, r, dir) {
+  const [dc, dr] = DIRS[dir];
+  const v = cell(c + dc, r + dr);
+  return v === AIR;                               // THE A-22 RULE: tunnels only
+}
+
+/* Same next-centre-ahead mover as Munch Man (see its RUN_LOG note). */
+function gridMove(e, dist, canGo, pick, onEnter) {
+  let guard = 64;
+  while (dist > 0.0001 && guard-- > 0) {
+    const { c, r } = cellOf(e);
+    const ctr = centerOf(c, r);
+    const atCenter = Math.abs(ctr.x - e.x) + Math.abs(ctr.y - e.y) < 0.001;
+    if (atCenter) {
+      const d = pick(c, r);
+      if (!d || !canGo(c, r, d)) break;
+      e.dir = d;
+    }
+    if (!e.dir) break;
+    const [dc, dr] = DIRS[e.dir];
+    const along = dc ? (ctr.x - e.x) * dc : (ctr.y - e.y) * dr;
+    const tx = along > 0.001 ? ctr.x : ctr.x + dc * T;
+    const ty = along > 0.001 ? ctr.y : ctr.y + dr * T;
+    const need = Math.abs(tx - e.x) + Math.abs(ty - e.y);
+    const step = Math.min(dist, need);
+    if (step >= need - 0.0001) {
+      /* SNAP to the centre exactly — float overshoot past a centre skips
+         the pick and walks through walls (found in Munch Man, same mover;
+         see its RUN_LOG). */
+      e.x = tx; e.y = ty;
+      dist -= need;
+      if (onEnter) onEnter(cellOf(e));
+    } else {
+      e.x += dc * step; e.y += dr * step;
+      dist -= step;
+    }
+  }
+}
+
+/* ---- Eater AI — BFS through air cells only ----------------------------- */
+function bfsDir(fromC, fromR, toC, toR) {
+  if (fromC === toC && fromR === toR) return null;
+  const prev = new Int16Array(COLS * ROWS).fill(-1);
+  const q = [idx(fromC, fromR)];
+  prev[q[0]] = q[0];
+  let found = -1;
+  while (q.length) {
+    const cur = q.shift();
+    const cc = cur % COLS, cr = (cur / COLS) | 0;
+    if (cc === toC && cr === toR) { found = cur; break; }
+    for (const [dc, dr] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nc = cc + dc, nr = cr + dr;
+      if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) continue;
+      const ni = idx(nc, nr);
+      if (prev[ni] !== -1 || game.grid[ni] !== AIR) continue;
+      prev[ni] = cur;
+      q.push(ni);
+    }
+  }
+  if (found === -1) return null;
+  let cur = found;
+  while (prev[cur] !== idx(fromC, fromR) && prev[cur] !== cur) cur = prev[cur];
+  const nc = cur % COLS, nr = (cur / COLS) | 0;
+  if (nc > fromC) return 'right';
+  if (nc < fromC) return 'left';
+  if (nr > fromR) return 'down';
+  return 'up';
+}
+function pickEater(e, c, r) {
+  e.cachedDir = e.cachedDir || null;
+  if (e.repathT <= 0) {
+    const a = cellOf(game.ant);
+    e.cachedDir = bfsDir(c, r, a.c, a.r);
+    e.repathT = 260;                    // repath cadence [ASSUMED]
+  }
+  if (e.cachedDir && canGoEater(c, r, e.cachedDir)) return e.cachedDir;
+  /* no path (ant is inside dirt it hasn't opened to us): prowl the air */
+  const opts = ['left','right','up','down'].filter(d => canGoEater(c, r, d));
+  if (!opts.length) return null;
+  const fwd = opts.filter(d => d !== OPP[e.dir]);
+  const use = fwd.length ? fwd : opts;
+  return use[(Math.random() * use.length) | 0];
+}
+
+/* ---- Update ------------------------------------------------------------ */
+let firePrev = false;
+const SUB_MS = 8;
+function update(dt) {
+  game.time += dt;
+  if (game.msg) { game.msg.t -= dt; if (game.msg.t <= 0) game.msg = null; }
+  if (game.setFlashT > 0) game.setFlashT -= dt;
+
+  if (game.state === 'title') {
+    if (held.fire() && !firePrev) newGame();
+    firePrev = held.fire();
+    return;
+  }
+  if (game.state === 'entry')  { updateEntry(dt); return; }
+  if (game.state === 'over') {
+    if (held.fire() && !firePrev) startEntryOrTitle();
+    firePrev = held.fire();
+    return;
+  }
+  if (game.state === 'dying') {
+    game.dyingT -= dt;
+    firePrev = held.fire();
+    if (game.dyingT <= 0) {
+      game.ants--;
+      if (game.ants < 0) gameOver();
+      else { respawn(); game.state = 'play'; }
+    }
+    return;
+  }
+  if (game.paused) { firePrev = held.fire(); return; }
+
+  let rem = dt;
+  while (rem > 0 && game.state === 'play') {
+    const h = Math.min(SUB_MS, rem);
+    rem -= h;
+    stepPlay(h);
+  }
+  firePrev = held.fire();
+}
+
+function antDies() {
+  Sound.death();
+  game.state = 'dying';
+  game.dyingT = 1300;
+}
+
+function stepPlay(dt) {
+  const A = game.ant;
+  A.anim += dt;
+
+  /* input → want */
+  if (held.left()) A.want = 'left';
+  else if (held.right()) A.want = 'right';
+  else if (held.up()) A.want = 'up';
+  else if (held.down()) A.want = 'down';
+
+  /* egg on fire edge (A-23: place, fuse, retreat) */
+  const fr = held.fire();
+  if (fr && !firePrev2 && A.eggs > 0) {
+    const { c, r } = cellOf(A);
+    if (!game.eggs.some(g => g.c === c && g.r === r)) {
+      game.eggs.push({ c, r, t: EGG_FUSE });
+      A.eggs--;
+      Sound.egg();
+    }
+  }
+  firePrev2 = fr;
+
+  /* ant movement — speed depends on medium */
+  const { c: ac0, r: ar0 } = cellOf(A);
+  const aheadDigs = A.dir && cell(ac0 + DIRS[A.dir][0], ar0 + DIRS[A.dir][1]) === DIRT;
+  const base = ar0 === 0 ? ANT_SURFACE : ANT_TUNNEL;
+  const spd = base * (aheadDigs ? ANT_DIG_MUL : 1);
+  gridMove(A, spd * dt, canGoAnt,
+    (c, r) => {
+      if (A.want && canGoAnt(c, r, A.want)) return A.want;
+      if (A.dir && canGoAnt(c, r, A.dir)) return A.dir;
+      return null;
+    },
+    ({ c, r }) => {
+      if (cell(c, r) === DIRT) {                   // dig on entry — persists
+        game.grid[idx(c, r)] = AIR;
+        Sound.dig();
+        /* undermining: a ROCK directly above a fresh hole starts to wobble */
+        if (cell(c, r - 1) === ROCK) {
+          const rk = game.rocks.find(k => k.state === 'set' && k.c === c && k.r === r - 1);
+          if (rk) { rk.state = 'wobble'; rk.t = ROCK_WOBBLE; }
+        }
+      }
+    });
+
+  /* food pickup / delivery */
+  const { c: ac, r: ar } = cellOf(A);
+  if (ar === 0 && A.carrying < 0) {
+    const f = game.food.findIndex(f => !f.taken && f.c === ac);
+    if (f >= 0) { game.food[f].taken = true; A.carrying = f; Sound.pickup(); }
+  }
+  if (A.carrying >= 0 && Math.abs(ac - COLONY.c) <= 1 && ar === COLONY.r) {
+    A.carrying = -1;
+    game.delivered++;
+    addScore(PTS_DELIVER);
+    Sound.deliver();
+    flashMsg('DELIVERED ' + game.delivered + '/' + FOOD_COUNT);
+    if (game.delivered >= FOOD_COUNT) {
+      game.ants++;                                 // sourced: extra ant per set
+      Sound.extra();
+      flashMsg('SET COMPLETE - EXTRA ANT');
+      startSet(game.set + 1);
+      return;
+    }
+  }
+
+  /* eaters */
+  for (const e of game.eaters) {
+    e.repathT -= dt;
+    const mul = setSpeedMul(game.set);
+    const { r: er } = cellOf(e);
+    const espd = (er === 0 ? EATER_SURFACE : EATER_TUNNEL) * mul;
+    gridMove(e, espd * dt, canGoEater, (c, r) => pickEater(e, c, r), null);
+    /* T3 self-check: an eater must never occupy a non-air cell */
+    const ec = cellOf(e);
+    if (cell(ec.c, ec.r) !== AIR) game.eaterViolations++;
+    if (Math.abs(e.x - A.x) < 6 && Math.abs(e.y - A.y) < 6) { antDies(); return; }
+  }
+
+  /* eggs */
+  for (let i = game.eggs.length - 1; i >= 0; i--) {
+    const g = game.eggs[i];
+    g.t -= dt;
+    if (g.t <= 0) {
+      game.eggs.splice(i, 1);
+      game.booms.push({ c: g.c, r: g.r, t: 300 });
+      Sound.boom();
+      const blast = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
+      for (let j = game.eaters.length - 1; j >= 0; j--) {
+        const ec = cellOf(game.eaters[j]);
+        if (blast.some(([dc, dr]) => ec.c === g.c + dc && ec.r === g.r + dr)) {
+          game.eaters.splice(j, 1);
+          addScore(PTS_EGG_KILL);
+          flashMsg(String(PTS_EGG_KILL));
+        }
+      }
+    }
+  }
+  /* dead eaters respawn at the edges so the set pressure holds [ASSUMED] */
+  while (game.eaters.length < eaterCount(game.set))
+    game.eaters.push(makeEater((Math.random() * 2) | 0));
+
+  /* rocks */
+  for (const rk of game.rocks) {
+    if (rk.state === 'wobble') {
+      rk.t -= dt;
+      if (rk.t <= 0) {
+        rk.state = 'fall';
+        game.grid[idx(rk.c, rk.r)] = AIR;          // it leaves its socket
+        rk.y = OY + (rk.r + 0.5) * T;
+        Sound.rock();
+      }
+    } else if (rk.state === 'fall') {
+      rk.y += 0.12 * dt;
+      const rr = Math.floor((rk.y - OY) / T);
+      /* crush check at the rock's current cell */
+      for (let j = game.eaters.length - 1; j >= 0; j--) {
+        const ec = cellOf(game.eaters[j]);
+        if (ec.c === rk.c && ec.r === rr) {
+          game.eaters.splice(j, 1);
+          addScore(PTS_ROCK_KILL);
+          flashMsg(String(PTS_ROCK_KILL));
+        }
+      }
+      const acl = cellOf(game.ant);
+      if (acl.c === rk.c && acl.r === rr) { antDies(); }
+      /* landing: the cell below is not air */
+      const below = cell(rk.c, rr + 1);
+      if (below !== AIR) {
+        rk.state = 'rest'; rk.r = rr;
+        game.grid[idx(rk.c, rk.r)] = ROCK_SET;     // solid, undiggable forever
+      }
+      if (game.state !== 'play') return;
+    }
+  }
+
+  for (let i = game.booms.length - 1; i >= 0; i--) {
+    game.booms[i].t -= dt;
+    if (game.booms[i].t <= 0) game.booms.splice(i, 1);
+  }
+}
+let firePrev2 = false;
+
+/* ---- Entry / leaderboard (shared protocol) ----------------------------- */
+function startEntryOrTitle() {
+  if (HiScore.qualifies(game.score)) {
+    game.entry = { chars: [0,0,0], slot: 0, hold: 0, pl: true, pr: true, pf: true };
+    game.state = 'entry';
+  } else {
+    game.state = 'title';
+  }
+}
+function updateEntry(dt) {
+  const e = game.entry;
+  const L = held.left(), Rr = held.right(), OK = held.fire();
+  const cyc = d => { e.chars[e.slot] = (e.chars[e.slot] + d + LETTERS.length) % LETTERS.length; };
+  e.hold -= dt;
+  if (L  && !e.pl) { cyc(-1); e.hold = 380; }
+  if (Rr && !e.pr) { cyc(+1); e.hold = 380; }
+  if ((L || Rr) && e.hold <= 0) { cyc(L ? -1 : +1); e.hold = 110; }
+  if (OK && !e.pf) advanceEntry();
+  e.pl = L; e.pr = Rr; e.pf = OK;
+  firePrev = OK;
+}
+function advanceEntry() {
+  const e = game.entry;
+  if (!e) return;
+  e.slot++;
+  if (e.slot > 2) {
+    game.lastRank = HiScore.add(e.chars.map(i => LETTERS[i]).join(''), game.score);
+    game.entry = null;
+    game.state = 'title';
+  }
+}
+function toTitle() {
+  if (game.state === 'title') return;
+  game.paused = false;
+  game.entry = null;
+  game.state = 'title';
+}
+
+/* ---- Render ------------------------------------------------------------ */
+function render() {
+  const now = performance.now();
+  cx.fillStyle = TI.black;
+  cx.fillRect(0, 0, W, H);
+
+  text('SCORE', 4, 2, TI.gray);
+  text(String(game.score).padStart(6,'0'), 40, 2, TI.white);
+  const hs = 'HI ' + String(Math.max(topScore(), game.score)).padStart(6,'0');
+  text(hs, W - textW(hs) - 4, 2, TI.gray);
+  if (Sound.muted) center('SOUND OFF', 2, '#555');
+
+  if (game.state === 'title') { renderTitle(now); return; }
+  if (game.state === 'entry') { renderEntry(now); return; }
+
+  /* sky strip + house over the colony's opposite corner */
+  cx.fillStyle = '#0a0a14';
+  cx.fillRect(0, OY - 2, W, T + 2);
+  draw(HOUSE, W - 24, OY - 6, TI.darkRed);
+
+  /* the field */
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      const v = game.grid[idx(c, r)];
+      const x = OX + c * T, y = OY + r * T;
+      if (v === DIRT) {
+        cx.fillStyle = (c + r) % 2 ? '#5a3d1e' : '#6b4a26';   // dirt texture
+        cx.fillRect(x, y, T, T);
+      } else if (v === ROCK) {
+        cx.fillStyle = '#5a3d1e'; cx.fillRect(x, y, T, T);
+        const rk = game.rocks.find(k => k.c === c && k.r === r && k.state !== 'fall' && k.state !== 'rest');
+        const wob = rk && rk.state === 'wobble' && ((now / 60 | 0) % 2) ? 1 : 0;
+        draw(ROCK_S, x + 1 + wob, y + 2, TI.gray);
+      } else if (v === ROCK_SET) {
+        draw(ROCK_S, x + 1, y + 2, '#888');
+      }
+    }
+  /* colony chamber glow */
+  cx.fillStyle = '#141400';
+  cx.fillRect(OX + (COLONY.c - 1) * T, OY + COLONY.r * T, 3 * T, T);
+  text('NEST', OX + (COLONY.c - 1) * T + 1, OY + COLONY.r * T + 1, TI.darkYellow);
+
+  /* food */
+  for (const f of game.food)
+    if (!f.taken) draw(FOOD, OX + f.c * T + 1, OY + f.r * T + 2, TI.lightGreen);
+
+  /* eggs (blink faster as the fuse runs down — the timer made visible) */
+  for (const g of game.eggs) {
+    const rate = g.t < 700 ? 90 : 220;
+    if ((now / rate | 0) % 2)
+      draw(EGG, OX + g.c * T + 2, OY + g.r * T + 2, TI.white);
+  }
+
+  /* falling rocks */
+  for (const rk of game.rocks)
+    if (rk.state === 'fall')
+      draw(ROCK_S, OX + rk.c * T + 1, rk.y - 2, TI.gray);
+
+  /* eaters */
+  for (const e of game.eaters)
+    draw(EATER, e.x - 3.5, e.y - 3, TI.magenta);
+
+  /* ant */
+  const A = game.ant;
+  if (A && game.state !== 'dying') {
+    draw(ANT, A.x - 3.5, A.y - 3, A.carrying >= 0 ? TI.lightYellow : TI.mediumRed);
+    if (A.carrying >= 0) draw(FOOD, A.x - 3, A.y - 8, TI.lightGreen);
+  } else if (game.state === 'dying' && A) {
+    if ((now / 100 | 0) % 2) draw(ANT, A.x - 3.5, A.y - 3, TI.darkRed);
+  }
+
+  for (const b of game.booms)
+    draw(BOOM, OX + b.c * T + 0.5, OY + b.r * T + 0.5, TI.lightYellow);
+
+  /* bottom HUD */
+  cx.fillStyle = '#1a1a1a'; cx.fillRect(0, H - 12, W, 12);
+  for (let i = 0; i < Math.min(game.ants, 5); i++)
+    draw(ANT, 6 + i * 11, H - 10, TI.mediumRed);
+  for (let i = 0; i < (game.ant ? game.ant.eggs : 0); i++)
+    draw(EGG, 70 + i * 7, H - 9, TI.white);
+  const sv = 'SET ' + game.set;
+  text(sv, W - textW(sv) - 4, H - 9, TI.darkYellow);
+  text(game.delivered + '/' + FOOD_COUNT, 130, H - 9, TI.lightGreen);
+
+  if (game.setFlashT > 0) center('SET ' + game.set, 96, TI.lightYellow);
+  if (game.msg) center(game.msg.text, 106, TI.lightYellow);
+  if (game.paused) center('PAUSED', 90, TI.lightYellow);
+  if (game.state === 'over') {
+    center('GAME OVER', 84, TI.mediumRed);
+    if (HiScore.qualifies(game.score)) center('NEW HIGH SCORE', 98, TI.lightYellow);
+    center('FIRE TO CONTINUE', 112, TI.gray);
+  }
+}
+
+function renderTitle(now) {
+  center('ANTEATER', 30, TI.mediumRed);
+  center('ROMOX - TI-99/4A - 1983', 44, '#444');
+  const list = HiScore.list();
+  center('HIGH SCORES', 60, TI.cyan);
+  if (!list.length) center('NO SCORES YET', 74, '#555');
+  else {
+    let y = 72;
+    list.slice(0, 6).forEach((e, i) => {
+      const fresh = game.lastRank === i + 1;
+      const blink = fresh && ((now/300|0) % 2);
+      const col = blink ? TI.white : fresh ? TI.lightYellow : TI.gray;
+      text(String(i+1), 66, y, '#555');
+      text(e.n, 80, y, col);
+      text(String(e.s).padStart(6,'0'), 112, y, col);
+      y += 9;
+    });
+  }
+  center(matchMedia('(hover: none)').matches ? 'TAP EGG TO START' : 'PRESS SPACE TO START',
+         134, ((now/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
+  center('YOU ARE THE ANT - THEY USE YOUR TUNNELS', 150, '#555');
+  center('EGGS ARE TIMERS - AIM BY RETREATING', 160, '#555');
+}
+function renderEntry(now) {
+  center('NEW HIGH SCORE', 50, TI.lightYellow);
+  center(String(game.score), 66, TI.white);
+  center('ENTER YOUR INITIALS', 84, '#666');
+  const e = game.entry;
+  for (let i = 0; i < 3; i++) {
+    const x = (W/2|0) - 21 + i*16;
+    const active = i === e.slot;
+    const blink = active && ((now/300|0) % 2);
+    text(LETTERS[e.chars[i]], x, 102, blink ? TI.white : active ? TI.lightYellow : TI.gray);
+    if (active) { cx.fillStyle = TI.lightYellow; cx.fillRect(x, 112, 5, 1); }
+  }
+  center(matchMedia('(hover: none)').matches
+    ? 'SWIVEL PICKS - EGG LOCKS IN'
+    : 'ARROWS OR TYPE - SPACE LOCKS IN', 132, '#555');
+}
+
+/* ---- Input ------------------------------------------------------------- */
+const keys = Object.create(null);
+addEventListener('keydown', e => {
+  if (Feedback.isOpen) {
+    if (e.key === 'Escape') Feedback.close();
+    return;
+  }
+  if ([' ','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  Sound.unlock();
+  if (e.key === 'p' || e.key === 'P') { if (game.state === 'play') game.paused = !game.paused; }
+  if (e.key === 'm' || e.key === 'M') Sound.toggle();
+  if (e.key === 'f' || e.key === 'F') Feedback.open();
+  if (e.key === 'Escape') toTitle();
+  if (game.state === 'entry' && game.entry) {
+    const up = e.key.toUpperCase();
+    if (up.length === 1 && LETTERS.includes(up)) {
+      game.entry.chars[game.entry.slot] = LETTERS.indexOf(up);
+      advanceEntry();
+    } else if (e.key === 'Backspace' && game.entry.slot > 0) {
+      game.entry.slot--;
+    }
+  }
+});
+addEventListener('keyup', e => { if (Feedback.isOpen) return; keys[e.key] = false; });
+
+const touch = { left:false, right:false, up:false, down:false, fire:false };
+function bindPad(id, prop) {
+  const el = document.getElementById(id);
+  const on  = e => { e.preventDefault(); Sound.unlock(); touch[prop] = true;  };
+  const off = e => { e.preventDefault(); touch[prop] = false; };
+  el.addEventListener('touchstart', on,  {passive:false});
+  el.addEventListener('touchend',   off, {passive:false});
+  el.addEventListener('touchcancel',off, {passive:false});
+  el.addEventListener('mousedown',  on);
+  el.addEventListener('mouseup',    off);
+  el.addEventListener('mouseleave', off);
+}
+bindPad('bL','left'); bindPad('bR','right'); bindPad('bU','up');
+bindPad('bD','down'); bindPad('bF','fire');
+
+function bindTap(id, fn) {
+  const el = document.getElementById(id);
+  const h = e => { e.preventDefault(); Sound.unlock(); fn(); };
+  el.addEventListener('touchstart', h, {passive:false});
+  el.addEventListener('click', h);
+}
+bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
+bindTap('bT', () => toTitle());
+bindTap('bM', () => Sound.toggle());
+bindTap('bFB', () => Feedback.open());
+
+/* ---- SWIVEL STICK — shared contract, four-way. ------------------------- */
+const Stick = (() => {
+  const DEAD = 9;
+  let stickId = null, ox = 0, oy = 0, cxp = 0, cyp = 0, fireId = null;
+  const state = { active:false, ox:0, dx:0, dy:0 };
+  function apply() {
+    const dx = cxp - ox, dy = cyp - oy;
+    state.dx = dx; state.dy = dy;
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    touch.left  = state.active && dx < -DEAD && ax >= ay;
+    touch.right = state.active && dx >  DEAD && ax >= ay;
+    touch.up    = state.active && dy < -DEAD && ay >  ax;
+    touch.down  = state.active && dy >  DEAD && ay >  ax;
+  }
+  function start(e) {
+    const r = cv.getBoundingClientRect();
+    for (const t of e.changedTouches) {
+      const leftHalf = (t.clientX - r.left) < r.width / 2;
+      if (leftHalf && stickId === null) {
+        stickId = t.identifier; ox = cxp = t.clientX; oy = cyp = t.clientY;
+        state.active = true; state.ox = t.clientX - r.left;
+      } else if (!leftHalf && fireId === null) {
+        fireId = t.identifier; touch.fire = true;
+      }
+    }
+    apply(); e.preventDefault(); Sound.unlock();
+  }
+  function move(e) {
+    for (const t of e.changedTouches) if (t.identifier === stickId) { cxp = t.clientX; cyp = t.clientY; }
+    apply(); e.preventDefault();
+  }
+  function end(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = null; state.active = false;
+                                      touch.left = touch.right = touch.up = touch.down = false; }
+      if (t.identifier === fireId)  { fireId = null; touch.fire = false; }
+    }
+    apply();
+  }
+  cv.addEventListener('touchstart',  start, { passive:false });
+  cv.addEventListener('touchmove',   move,  { passive:false });
+  cv.addEventListener('touchend',    end,   { passive:false });
+  cv.addEventListener('touchcancel', end,   { passive:false });
+  return state;
+})();
+
+/* Virtual input for the sim harness — bots drive THESE and nothing else. */
+const simInput = { left:false, right:false, up:false, down:false, fire:false };
+const held = {
+  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right || simInput.right,
+  up:    () => keys['ArrowUp']    || keys['w'] || keys['W'] || touch.up    || simInput.up,
+  down:  () => keys['ArrowDown']  || keys['s'] || keys['S'] || touch.down  || simInput.down,
+  fire:  () => keys[' '] || keys['Enter'] || touch.fire || simInput.fire
+};
+
+/* ---- HIGH SCORE TABLE — shared protocol -------------------------------- */
+const HiScore = (() => {
+  const KEY = 'arcade.anteater.scores', MAX = 8;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+                       catch (e) { return []; } };
+  const store = l => { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} };
+  return {
+    list: load,
+    qualifies(score) {
+      if (score <= 0) return false;
+      const l = load();
+      return l.length < MAX || score > l[l.length - 1].s;
+    },
+    add(name, score) {
+      const l = load();
+      l.push({ n: name, s: score, d: new Date().toISOString().slice(0, 10) });
+      l.sort((a, b) => b.s - a.s);
+      const cut = l.slice(0, MAX);
+      store(cut);
+      return cut.findIndex(e => e.s === score && e.n === name) + 1;
+    },
+    clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  };
+})();
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+function topScore() { const l = HiScore.list(); return l.length ? l[0].s : 0; }
+
+/* ---- FEEDBACK — shared contract (extended to rung 6). ------------------ */
+const Feedback = (() => {
+  const ISSUES = 'https://github.com/Sobevista/arcade-progression/issues/new';
+  const root = document.getElementById('fb');
+  const ta = document.getElementById('fbText');
+  const ctxEl = document.getElementById('fbCtx');
+  const note = document.getElementById('fbNote');
+  let isOpen = false;
+  function context() {
+    return [
+      'game: ANTEATER (rung 6, TI-99/4A)',
+      'state: ' + game.state + (game.paused ? ' (paused)' : ''),
+      'set: ' + game.set + '  delivered: ' + game.delivered + '/' + FOOD_COUNT +
+        '  eggs: ' + (game.ant ? game.ant.eggs : 0),
+      'score: ' + game.score + '  top: ' + topScore(),
+      'date: ' + new Date().toISOString(),
+      'viewport: ' + window.innerWidth + 'x' + window.innerHeight + ' @' + scale + 'x' +
+        (document.body.classList.contains('touch') ? ' touch' : ''),
+      'ua: ' + navigator.userAgent
+    ].join('\n');
+  }
+  function buildReport() {
+    const t = ta.value.trim();
+    return '### Playtest report\n\n' + (t || '(no text entered)') +
+           '\n\n---\n```\n' + context() + '\n```\n';
+  }
+  function open() {
+    if (isOpen) return;
+    isOpen = true;
+    if (game.state === 'play') game.paused = true;
+    for (const k in keys) keys[k] = false;
+    touch.left = touch.right = touch.up = touch.down = touch.fire = false;
+    note.textContent = '';
+    ctxEl.textContent = context();
+    root.classList.add('open');
+    ta.focus();
+  }
+  function close() {
+    if (!isOpen) return;
+    isOpen = false;
+    root.classList.remove('open');
+    ta.blur();
+  }
+  document.getElementById('fbClose').addEventListener('click', close);
+  document.getElementById('fbGh').addEventListener('click', () => {
+    const url = ISSUES + '?title=' + encodeURIComponent('[anteater] playtest report') +
+                '&body=' + encodeURIComponent(buildReport());
+    window.open(url, '_blank');
+    note.textContent = 'OPENED GITHUB IN A NEW TAB';
+  });
+  document.getElementById('fbCopy').addEventListener('click', () => {
+    const r = buildReport();
+    const done = () => { note.textContent = 'COPIED - PASTE IT TO DANIEL'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(r).then(done, () => fallback());
+    } else fallback();
+    function fallback() {
+      ta.value = r; ta.select();
+      try { document.execCommand('copy'); done(); }
+      catch (e) { note.textContent = 'COPY FAILED - SELECT AND COPY BY HAND'; }
+    }
+  });
+  return { open, close, buildReport, get isOpen() { return isOpen; } };
+})();
+
+/* ---- Loop -------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(50, now - last);   // INV-2
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---- Test hook (INV-6) + sim contract ---------------------------------- */
+window.__anteater = {
+  get state()   { return game.state; },
+  get score()   { return game.score; },
+  get eaterViolations() { return game.eaterViolations; },
+  game, newGame, startSet, respawn, toTitle, Sound, HiScore, LETTERS,
+  startEntryOrTitle, advanceEntry, topScore, Stick, TI, Feedback,
+  cell, cellOf, canGoAnt, canGoEater, bfsDir, buildField,
+  geom: { W, H, COLS, ROWS, T, OX, OY, PADDLE_SPEED: ANT_SURFACE,
+          ANT_TUNNEL, ANT_DIG_MUL, ANT_SURFACE, EATER_SURFACE, EATER_TUNNEL,
+          EGG_FUSE, EGGS_PER_ANT, FOOD_COUNT, EATER_CAP, SPEED_CAP_SET,
+          PTS_DELIVER, PTS_EGG_KILL, PTS_ROCK_KILL, COLONY,
+          DIRT, AIR, ROCK, ROCK_SET },
+  setSpeedMul, eaterCount,
+  sim: {
+    input: simInput,
+    step(dt) { update(dt); },
+    reset() { simInput.left = simInput.right = simInput.up = simInput.down = simInput.fire = false; },
+    observe() {
+      const A = game.ant;
+      const a = A ? cellOf(A) : null;
+      return { state: game.state, score: game.score, set: game.set,
+               ants: game.ants, delivered: game.delivered,
+               eaterViolations: game.eaterViolations,
+               paddleX: A ? A.x : 0,
+               ant: A ? { x: A.x, y: A.y, c: a.c, r: a.r, dir: A.dir,
+                          carrying: A.carrying, eggs: A.eggs } : null,
+               eaters: game.eaters.map(e => { const c = cellOf(e);
+                 return { x: e.x, y: e.y, c: c.c, r: c.r }; }),
+               eggs: game.eggs.map(g => ({ c: g.c, r: g.r, t: g.t })),
+               rocks: game.rocks.map(r => ({ c: r.c, r: r.r, state: r.state })),
+               food: game.food.map(f => ({ c: f.c, taken: f.taken })),
+               airCells: (() => { let n = 0;
+                 for (let i = 0; i < game.grid.length; i++)
+                   if (game.grid[i] === AIR) n++;
+                 return n; })() };
+    }
+  }
+};
+</script>

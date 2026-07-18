@@ -529,6 +529,132 @@ genres existed. The ladder was never "simple action → complex action."
 
 ---
 
+## Rung 6 — TI-99/4A part II: law and distribution (games 1982–83)
+
+Dug 2026-07-19 (rung 6 session), before any code. Same silicon as rung 5 — the machine
+table there stands unchanged. What's new on this rung is everything *around* the
+machine: the 1982 legal earthquake and the birth of third-party cartridge distribution.
+Two games, again orthogonal: **Munch Man** (TI in-house, Q1 1982, $39.95, PHM 3057 —
+written by **Jim Dramis, the same hand as Parsec**) and **Anteater** (Romox, third-party,
+TI 102, Q2 1983, $39.95).
+
+### Finding 1 — the lawsuit was a level designer (A-21)
+
+The 1981 Munch Man prototype had **dots and power pills** — the screenshots survive
+([Videogame House prototype page](https://www.videogamehouse.net/munchmanproto.html)).
+On **March 2, 1982** the Seventh Circuit granted Atari an injunction killing Magnavox's
+K.C. Munchkin for capturing Pac-Man's **"total concept and feel"** — one of the first
+copyright rulings applied to a video game ([Atari v. North American Philips](https://en.wikipedia.org/wiki/Atari,_Inc._v._North_American_Philips_Consumer_Electronics_Corp.),
+[Justia 672 F.2d 607](https://law.justia.com/cases/federal/appellate-courts/F2/672/607/331150/)).
+TI's response: replace the dots with **laying down a chain** and the power pills with
+**TI logos** ([Wikipedia](https://en.wikipedia.org/wiki/Munch_Man)).
+
+The dodge inverted the game's verb. Same underlying objective — visit every cell of
+the maze — but the marker flipped sign: Pac-Man's maze is a to-do list (what's left),
+Munch Man's is a ledger (what you've built). The energizer inverted too: eating one
+turns the Hoonos black **and speeds Munch Man up** ([4A-Pedia](https://4apedia.com/index.php?title=Munch_Man)) —
+your power-up buffs *you* rather than nerfing *them*. The forced differentiation is
+what the market remembered: Munch Man became one of the most popular TI-99/4A titles
+([Wikipedia](https://en.wikipedia.org/wiki/Munch_Man)).
+
+**The transferable lesson (A-21):** the constraint classes keep widening — hardware
+(rung 2), manufacturing and business model (rung 3), now **law**. A legal constraint
+taken seriously generates design the same way a hardware constraint does; the clone
+that survived 1982 is the one that stopped being a clone.
+
+*Sourced aside, kin to our own instrument laws:* the title screen hides a `* # *`
+cheat that unlocks round/lives selection — and scores earned that way are recorded as
+**"Test Score"**, not "Your Score" ([Videogame House](https://www.videogamehouse.net/munchman.html)).
+The 1982 cartridge already refused to let test runs masquerade as real runs.
+
+### Finding 2 — you dig your own attack surface (A-22)
+
+Anteater is sourced as Dig Dug-inspired, but it inverts the power relation: you are
+not the armed digger clearing monsters — you are **an ant foraging** (colony → surface
+food → colony; points only on the round trip), and the anteaters wait *above ground*
+where the food is. The pivot: tunnels persist, and **"Anteaters can also access
+tunnels in the dirt once they've been created"** ([4A-Pedia](https://4apedia.com/index.php?title=Anteater)).
+Every corridor you dig for mobility is a corridor the predator can use to reach you.
+Comfort infrastructure and attack surface are the same object.
+
+**The transferable lesson (A-22):** player-built structure is *shared* structure —
+whatever you build for your own convenience, you build for the adversary too, and a
+design gets depth for free by making the player's past choices into terrain. (Modern
+costume: every API you open for yourself is an attack surface; every road in an RTS
+carries both armies.)
+
+### Finding 3 — a weapon you aim with time, not space (A-23)
+
+The ant carries **five eggs that explode seconds after the fire button is pressed**,
+and the manual teaches the aiming technique outright: the ant out-runs the eater in
+tunnels, "so you can adjust your distance for laying the delayed eggs **by retracing
+your steps**" ([manual text](https://www.videogamehouse.net/anteater.txt),
+[4A-Pedia](https://4apedia.com/index.php?title=Anteater)). The weapon has no direction —
+placement, fuse, and your own movement *are* the targeting system. Second
+environmental kill: dig under a rock and it falls on the follower.
+
+**The transferable lesson (A-23):** when the weapon is a timer, aim becomes
+choreography — the player's movement is the targeting mechanism, and the skill being
+tested is prediction, not reflex. This is the tunnel speed asymmetry cashing out:
+without the speed edge, kiting is impossible and the eggs are decoration.
+
+### Finding 4 — digital distribution shipped in 1983, twenty years early (A-24)
+
+Romox wasn't just a publisher. Their **ECPC** (Edge Connector Programmable Cartridge)
+system — US patent 4,597,058, filed May 9, 1983 — describes a host computer pushing a
+program library **over dial-up phone lines** to in-store terminals; the customer picks
+a title, the kiosk burns it onto a blank reprogrammable cartridge, **verifies the copy,
+and records the transaction so royalties could be billed** ([patent](https://www.freepatentsonline.com/4597058.html)).
+One terminal had nine edge-connector slots to serve incompatible machines. That is a
+digital storefront: catalogue, network delivery, integrity check, royalty accounting —
+in a mall, in 1983.
+
+**The transferable lesson (A-24):** a distribution innovation can precede its
+viability window by decades. Being right about the idea is not the same as being right
+about the year — the surrounding ecosystem (bandwidth, install base, trust) is part of
+the product.
+
+### Open / unverified
+
+- **Munch Man invisible levels (20/40/60) — sources conflict.** [Wikipedia](https://en.wikipedia.org/wiki/Munch_Man):
+  maze invisible, *no chains*, eat all the TI logos. [4A-Pedia](https://4apedia.com/index.php?title=Munch_Man):
+  "completely invisible, although the chain is completely connected." Our build follows
+  Wikipedia's version. **[ASSUMED]**
+- **Munch Man energizer "three power levels (high/medium/low), each usable once per
+  level"** (4A-Pedia) vs four energizers per level — unclear how these reconcile; the
+  manual is scanned images only. v1 ships uniform energizers. **[ASSUMED]**
+- **Munch Man maze topology** (wall layout, chain-cell count) and **Hoono AI** beyond
+  the sourced traits (red = most intelligent; yellow can vanish briefly; aggression
+  and speed rise per level, eventually exceeding the player's) are approximations.
+  **[ASSUMED]** Speed "eventually surpassing Munch Man" gets an authored ceiling per A-18.
+- **Anteater numbers:** scoring values, egg fuse seconds, eater count beyond set 3,
+  and what difficulty 1–9 changes are not in the manual excerpt. **[ASSUMED, tuned by play]**
+- **Anteater food items:** manual says four cubes of "food"; the box screenshots say
+  "Go get those eggs!" — we render food cubes. **[ASSUMED]**
+
+### Our Suffering Ledger for rung 6
+
+| Constraint | Verdict | Reasoning |
+|---|---|---|
+| **Munch Man:** chain interlock over the entire maze | **KEEP — the rung's subject** | The lawsuit-forced inversion IS the finding (A-21) |
+| **Munch Man:** energizer speeds the player up (not just Hoonos nerfed) | **KEEP exactly** | The second half of the inversion; changing it un-digs the archaeology |
+| **Munch Man:** 4 energizers, 10 pts/link, 70 pts/energizer, 100–800 capture ladder, extra life per 10,000 | **KEEP** | Sourced scoring is cheap fidelity |
+| **Munch Man:** warp corridors both sides | **KEEP** | Sourced maze feature, teaches wrap topology |
+| **Munch Man:** Hoono colour personalities (red smartest, yellow vanishes) | **KEEP** | Sourced behavioural asymmetry — four enemies, four characters (Pac-Man's own deepest idea, legally re-costumed) |
+| **Munch Man:** 20 Hoono shape sets across 60 levels | **SKIP v1** | 20 sprite sets is art volume, not design; v1 cycles a smaller set, ramp gets an authored cap (A-18) |
+| **Munch Man:** invisible levels 20/40/60 | **KEEP the concept** (reachable via ramp, testable via sim) | A renderer flag that converts the ledger into memory — fog lesson, kin to Wumpus |
+| **Munch Man:** `* # *` test mode labelling scores "Test Score" | **KEEP** | It's our own INV-3/INV-14 instrument-honesty law, shipped in 1982 — homage inside the homage |
+| **Anteater:** persistent tunnels + eater tunnel access | **KEEP — the rung's second subject** | A-22; the whole game is this rule |
+| **Anteater:** ant faster than eater in tunnels | **KEEP** | Without the asymmetry A-23's timing weapon is unusable |
+| **Anteater:** five delayed-fuse eggs | **KEEP** | The choreography weapon (A-23) |
+| **Anteater:** rocks fall when undermined | **KEEP** | Environmental kill, Dig Dug lineage acknowledged |
+| **Anteater:** 4 food round trips per set, extra ant per set, eater count/speed per set | **KEEP** | The sourced risk economy: surface = exposure |
+| **Anteater:** difficulty select 1–9 | **SKIP v1** | One authored curve; a start-level picker multiplies the test surface |
+| **Anteater:** two-player alternating | **SKIP v1** | Series-wide ruling, same as rungs 2–5 |
+| TMS9918A palette, character-grid discipline | **KEEP** | Series constraint since rung 2, and this is the machine's own rung |
+
+---
+
 ## Running list of transferable lessons
 
 *The trove. One line per finding, sourced, added as each rung is dug.*
@@ -555,3 +681,7 @@ genres existed. The ladder was never "simple action → complex action."
 | A-18 | An unexamined numeric limit eventually becomes gameplay; every ramp needs an authored ceiling or its real ceiling is whatever overflows first | 5 | Parsec's endgame wall is signed 8-bit sprite velocity wrapping at +127 |
 | A-19 | A new output channel earns its keep when it carries information the busy channel would drop — voice that replaces a glance is bandwidth, voice that duplicates the screen is decoration | 5 | Parsec's in-game speech: wave warnings and fuel alerts while the eyes stay on the fight |
 | A-20 | The rendering technology lobbies silently for shapes it draws natively; when a port changes a game's topology, look for the display in the room | 5 | Yob's anti-grid dodecahedron (1973) became a wrapping grid on a character-cell display (1980) |
+| A-21 | Legal constraints generate design like hardware constraints do — the clone that survived 1982 is the one the lawsuit forced to stop being a clone | 6 | Munch Man: 1981 prototype had dots; K.C. Munchkin injunction (Mar 2, 1982); dots became chain, pills became TI logos |
+| A-22 | Player-built structure is shared structure — whatever you build for your own mobility, you build for the adversary too | 6 | Anteater: eaters use the tunnels you dug; comfort infrastructure = attack surface |
+| A-23 | When the weapon is a timer, aim becomes choreography — the player's movement is the targeting system, and the skill tested is prediction | 6 | Anteater: delayed-fuse eggs aimed by retracing steps, priced by the tunnel speed asymmetry |
+| A-24 | A distribution innovation can precede its viability window by decades; the surrounding ecosystem is part of the product | 6 | Romox ECPC: dial-up game delivery to cartridge-burning mall kiosks with royalty accounting, patented 1983 |

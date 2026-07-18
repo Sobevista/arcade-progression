@@ -29,16 +29,18 @@ Follow `RESUME.md`.
 | 3 | **Breakout** | 1976 | reflection angles, tile grid, an *authored* difficulty curve — and no CPU at all | ✅ **PLAY** — [`rungs/03-breakout/`](rungs/03-breakout/) · [live](https://sobevista.github.io/arcade-progression/rungs/03-breakout/) |
 | 4 | **Galaga** | 1981 | entry-flight choreography, dive AI, capture/rescue, challenging stages | ✅ **PLAY** — [`rungs/04-galaga/`](rungs/04-galaga/) · [live](https://sobevista.github.io/arcade-progression/rungs/04-galaga/) |
 | 5 | **TI-99/4A: Hunt the Wumpus + Parsec** | 1980 / 1982 | the homage machine itself — deduction as a genre (Wumpus) and the ladder's first scrolling world, fuel, heat, speech (Parsec) | ✅ **PLAY** — [`rungs/05-ti994a/wumpus/`](rungs/05-ti994a/wumpus/) · [`rungs/05-ti994a/parsec/`](rungs/05-ti994a/parsec/) · [wumpus live](https://sobevista.github.io/arcade-progression/rungs/05-ti994a/wumpus/) · [parsec live](https://sobevista.github.io/arcade-progression/rungs/05-ti994a/parsec/) |
-| 6 | NES | 1985+ | tile maps, scrolling, item state | queued |
+| 6 | **TI-99/4A part II: Munch Man + Anteater** | 1982 / 1983 | law and distribution as constraints — the lawsuit-forced chain inversion (Munch Man) and player-dug tunnels the enemies share, plus a weapon aimed with time (Anteater) | ✅ **PLAY** — [`rungs/06-ti994a-2/munchman/`](rungs/06-ti994a-2/munchman/) · [`rungs/06-ti994a-2/anteater/`](rungs/06-ti994a-2/anteater/) · [munchman live](https://sobevista.github.io/arcade-progression/rungs/06-ti994a-2/munchman/) · [anteater live](https://sobevista.github.io/arcade-progression/rungs/06-ti994a-2/anteater/) |
+| 7 | NES | 1985+ | tile maps, scrolling, item state | queued |
 
 Rungs are numbered by build order, not strictly by year — Breakout is a backfill, built
 third because it is the causal link between Pong and Space Invaders.
 
 All playable games carry: a high score table with initials, a swivel stick for
-touch, synthesised audio, and the TI-99/4A palette. The rung-5 games additionally
-pilot the **in-game feedback contract** — a FEEDBACK button (or `F`) that pauses play
-and ships a context-stamped report as a prefilled GitHub issue or to the clipboard,
-so testers can report the moment they see something without leaving the game.
+touch, synthesised audio, and the TI-99/4A palette. The rung-5 and rung-6 games
+additionally carry the **in-game feedback contract** — a FEEDBACK button (or `F`)
+that pauses play and ships a context-stamped report as a prefilled GitHub issue or
+to the clipboard, so testers can report the moment they see something without
+leaving the game. (Rollout to rungs 2–4 awaits the pilot verdict.)
 
 ## Releasing a rung (pacing the learning)
 
