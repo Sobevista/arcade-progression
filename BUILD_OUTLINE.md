@@ -107,10 +107,8 @@ not an oversight. It should be revisited the moment either becomes true:
   drive-by GitHub visitors arrive structured.
 - **Release gating for rung 5 (DANIEL):** `releases.json` still advertises Invaders
   only; rungs 3, 4, and now 5a/5b await the pacing call.
-- **Rung 7 title (DANIEL):** the Exodus platformer needs an original name before its
-  `rungs/07-*/` folder and SCOPE exist. Candidates on the table from the opening
-  session: *Out of Egypt*, *Deliverance*, *Let My People Go*, *The Long Walk*,
-  *Brick by Brick* (Ex. 5 — the brickyard opening). Original title required (UX-34).
+- ~~Rung 7 title~~ **RULED same evening (Daniel): DELIVERANCE.** Folder
+  `rungs/07-deliverance/`; docs-conformance slug updated in the same commit.
 - **Alpiner (extra TI rung): BACK-BURNER (Daniel's ruling, 2026-07-18).** Buildable
   any time; diminishing returns against the trove now that the TI has two rungs. The
   harness OPEN LOOPS carries it.
@@ -541,3 +539,52 @@ not an oversight. It should be revisited the moment either becomes true:
   complete world (Egypt brickyards → Red Sea set-piece), pass criteria locked
   before code. The physics-table transcription from the disassembly is a SCOPE
   task with its own verification step.**
+
+- **2026-07-18 evening — RUNG 7 PHASE 1: DELIVERANCE BUILT AND MACHINE-VERIFIED,
+  same session as the dig. Human playtest still ahead — not done by the repo's own
+  standard.** Title ruled (Daniel), CRLF churn fixed repo-wide first
+  (`.gitattributes`, harness pattern, his call).
+
+  **The physics are transcribed, not tuned:** SMBDIS.ASM's data tables pulled from
+  the primary source (751 KB disassembly grepped locally; tables at lines 6014–6034,
+  tier logic 6095–6123) — and the SCOPE-derived predictions held on first
+  measurement: **walk 96 px / run 160 px per 64 frames exact; jump apexes 66 px
+  standing, 82.5 px running; a 1-frame tap jumps 23 px** (variable jump live). The
+  abort condition was never approached. One prospective criterion fix on record:
+  P2's 64/80 was corrected to the discrete 66/82 BEFORE any code existed.
+
+  Build: one 40 KB file — **the size of the actual SMB cartridge, unplanned** —
+  integer fixed-point engine (1/4096 px X, 1/256 px Y), fixed 60 Hz timestep,
+  seeded RNG, levels authored in a compact object language (A-26 kept), forward-only
+  camera, streaming entity window, three levels (Brickyard → Ninth Plague → Red Sea
+  with the parting set-piece and pursuing chariots), manna-spoils economy (UX-35,
+  Ex. 16), NES-palette art in 16×16 attribute-aligned regions, APU-flavoured
+  WebAudio, all shared contracts (leaderboard, initials, swivel stick, touch edges,
+  feedback overlay [ASSUMED default, Daniel may strike]).
+
+  **Verification: 9/9 suite green, conformance 11/11 CONFORMANT, docs check
+  consistent across six rungs** — run in real Chrome over local HTTP (the Cowork
+  Browser pane refused both localhost and live file:// this session; environment
+  note in RUN_LOG). Determinism byte-identical at 3,000 frames; tunneling sweep
+  clean; camera provably never rewinds; 0.046 ms/frame.
+
+  **The suite's first catch was real: two level-design defect classes** — a
+  platform underside 2 px above a staircase step (an authored softlock: every hop
+  bonks until the timer kills you) and 18–34 px overhangs above enemy patrol lanes
+  (the jump verb denied where it's most needed). Both found by the winnability bot,
+  both fixed, ruled as **UX-37 (50 px minimum headroom over traversal ground)**.
+  Also on record: bot v1 died with jump held through landing — **INV-15's held-
+  button law biting a bot** exactly as it bit "DAN"→"ADA" on rung 3. Four test-rig
+  bugs fixed along the way (INV-3 scoreboard: my tests were wrong 4 times, the
+  engine 0, the levels 2).
+
+  Docs flipped together (README + landing + conformance slug, same commit set).
+  `releases.json` untouched — advertising stays Daniel's pacing call. Committed
+  locally; **push is Daniel's** (publishing gate).
+
+  **NEXT ACTION: Daniel plays it** — double-click `rungs/07-deliverance/index.html`
+  (keyboard: arrows/Shift-run/Space-jump). The feel verdict is his: jump weight,
+  run commitment, manna-spoil pressure, Red Sea moment, difficulty of all three
+  levels. Then: family playtest rungs 4+5+6+7, the stacked calls (T9 bar, feedback
+  rollout, release gating — now four rungs waiting), and Phase 2 scoping (staff
+  power-ups, more worlds, enemy variety) after the feel verdict lands.**

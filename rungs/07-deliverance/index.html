@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>DELIVERANCE — rung 7 (NES class)</title>
+<style>
+  /* Rung 7 of the arcade progression. One file, zero external requests.
+     NES-class Exodus platformer. Physics transcribed from SMBDIS.ASM (see SCOPE.md).
+     Palette: NES 2C02 reconstruction [ASSUMED — the PPU emitted analog NTSC; every
+     RGB palette is a reconstruction, see ARCHAEOLOGY rung 7 open questions]. */
+  html,body{margin:0;padding:0;background:#000;color:#fcfcfc;font-family:monospace;
+    height:100%;overflow:hidden;-webkit-user-select:none;user-select:none;
+    touch-action:none}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center}
+  #topRow{display:flex;gap:8px;margin:4px 0;z-index:5}
+  #topRow button{background:#000;color:#bcbcbc;border:1px solid #444;font-family:monospace;
+    font-size:14px;padding:6px 14px;border-radius:4px}
+  #topRow button:active{background:#333}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#000;
+    display:block}
+  .ctl{position:fixed;bottom:10px;display:none;background:rgba(60,60,60,.35);
+    border:2px solid #666;border-radius:10px;color:#fcfcfc;font-size:34px;
+    width:190px;height:76px;z-index:6;font-family:monospace;text-align:center;
+    line-height:70px}
+  .touch .ctl{display:block}
+  #bL{left:10px}
+  #bR{right:10px}
+  #fb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;z-index:20;
+    align-items:center;justify-content:center}
+  #fb.open{display:flex}
+  #fbBox{background:#111;border:2px solid #6888fc;border-radius:8px;padding:14px;
+    width:min(480px,92vw)}
+  #fbBox h2{margin:0 0 8px;font-size:15px;color:#6888fc}
+  #fbText{width:100%;height:90px;background:#000;color:#fcfcfc;border:1px solid #444;
+    font-family:monospace;font-size:13px;box-sizing:border-box}
+  #fbBox button{background:#000;color:#fcfcfc;border:1px solid #666;font-family:monospace;
+    padding:6px 10px;margin:8px 6px 0 0;border-radius:4px}
+  #fbNote{font-size:11px;color:#888;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="topRow">
+  <button id="bP">PAUSE</button><button id="bT">TITLE</button>
+  <button id="bS">SOUND:ON</button><button id="bB">RUN:AUTO</button>
+  <button id="bF">FEEDBACK</button>
+</div>
+<canvas id="screen" width="256" height="240"></canvas>
+<div id="bL" class="ctl">&#9664;</div>
+<div id="bR" class="ctl">&#9654;</div>
+<div id="fb"><div id="fbBox">
+  <h2>PLAYTEST FEEDBACK — game is paused</h2>
+  <textarea id="fbText" placeholder="What happened? What felt wrong or right?"></textarea>
+  <div>
+    <button id="fbGit">OPEN GITHUB ISSUE</button>
+    <button id="fbCopy">COPY REPORT</button>
+    <button id="fbClose">CLOSE</button>
+  </div>
+  <div id="fbNote">Context (state, score, level) is attached automatically.</div>
+</div></div>
+<script>
+'use strict';
+/* ================= NES palette (2C02 reconstruction) [ASSUMED] ============= */
+const PAL={
+  black:'#000000', white:'#fcfcfc', gray:'#bcbcbc', dgray:'#7c7c7c',
+  sky:'#6888fc', dblue:'#0000bc', mblue:'#0078f8', lblue:'#3cbcfc',
+  navy:'#000058',
+  tan:'#fc9838', brown:'#ac7c00', dbrown:'#503000', sand:'#fcd8a8',
+  red:'#d82800', green:'#00a800', lgreen:'#b8f818', dgreen:'#005800',
+  yellow:'#f8b800', skin:'#fca044', purple:'#6844fc', teal:'#008888'
+};
+/* ============ PHYSICS — transcribed from SMBDIS.ASM lines 6014-6123 =========
+   [VERIFIED 2026-07-18 against gist 1wErt3r/4048722 — see SCOPE.md]
+   X: 1/4096 px/frame units (speed byte 1/16 px/f with 1/256 accumulator).
+   Y: 1/256 px/frame units.                                                    */
+const PHYS={
+  MAX_WALK:0x1800, MAX_RUN:0x2800, MAX_SLOW:0x1000,      // $18/$28/$10 <<8
+  ACC_RUN:0xE4, ACC_WALK:0x98, DEC_ABOVE:0xD0,           // FrictionData $e4/$98/$d0
+  JUMP_V:[-1024,-1024,-1024,-1280,-1280],                // PlayerYSpdData $fc.. -4/-5 px/f
+  GRAV_HOLD:[0x20,0x20,0x1E,0x28,0x28],                  // JumpMForceData
+  GRAV_FALL:[0x70,0x70,0x60,0x90,0x90],                  // FallMForceData
+  TIER:[0x900,0x1000,0x1900,0x1C00],                     // |vx| tier thresholds $09/$10/$19/$1c <<8
+  FALL_CAP:1024                                          // 4 px/f terminal [ASSUMED]
+};
+const T=16, ROWS=15, W=256, H=240;
+/* tile ids */ const AIR=0, GND=1, BRICK=2, STONE=3, WATER=4, SAND=5;
+const SOLID=new Set([GND,BRICK,STONE,WATER,SAND]);
+/* ====================== LEVELS — the object language (A-26) =================
+   Each level is authored as a compact object stream, not a tile grid — the kept
+   constraint from SMB's 2-byte encoding. Vocabulary:
+   gaps:[[col,len]]  plat:[[col,row,len]](brick)  block:[[col,row,w,h]](stone)
+   manna:[[col,row,len]]  foes:[[col,type]]  chk:col  goal:col
+   sea:{wall:col, trigger:col, end:col} (level 3 set piece)                    */
+const LEVELS=[
+ {name:'THE BRICKYARD', cols:224, palset:'day', groundTile:GND,
+  gaps:[[36,3],[58,2],[74,4],[150,3],[190,3]],
+  plat:[[20,10,4],[40,8,3],[60,8,4],[93,10,4],[120,8,4],[140,8,3],[170,8,4]],
+  block:[[100,12,1,1],[101,11,1,2],[102,10,1,3],[130,10,2,3]],
+  manna:[[21,9,3],[50,12,4],[94,9,3],[121,7,3],[160,12,5]],
+  foes:[[44,'task'],[68,'task'],[88,'task'],[116,'task'],[144,'task'],[176,'task'],[196,'task']],
+  chk:112, goal:218},
+ {name:'THE NINTH PLAGUE', cols:224, palset:'night', groundTile:STONE,
+  gaps:[[30,3],[50,4],[70,3],[88,2],[110,4],[140,3],[168,4]],
+  plat:[[34,9,3],[55,8,4],[80,9,4],[104,8,3],[132,9,4],[160,8,4],[184,10,4]],
+  block:[[96,10,2,3],[150,11,2,2]],
+  manna:[[34,7,2],[76,9,3],[126,8,3],[184,12,4]],
+  foes:[[40,'serp'],[58,'task'],[64,'serp'],[84,'serp'],[104,'serp'],[120,'task'],
+        [132,'serp'],[156,'serp'],[172,'task'],[180,'serp']],
+  chk:114, goal:218},
+ {name:'THE RED SEA', cols:256, palset:'sea', groundTile:SAND,
+  gaps:[[80,2],[120,2],[160,3],[200,2]],
+  plat:[], block:[],
+  manna:[[70,12,3],[100,12,3],[140,12,3],[180,12,3],[220,12,3]],
+  foes:[],
+  chk:130, goal:248,
+  sea:{wall:60, trigger:57, end:237}}
+];
+/* Hidden physics-proof level (tests only, unreachable in play): flat runway,
+   a 3-high wall, a pit, a low ceiling shelf. */
+const TESTLEVEL={name:'TEST', cols:64, palset:'day', groundTile:GND,
+  gaps:[[40,4]], plat:[[30,9,6]], block:[[24,10,1,3]], manna:[], foes:[],
+  chk:0, goal:62};
+/* flat runway for speed/jump conformance — nothing to hit, nothing to fall in */
+const FLATLEVEL={name:'FLAT', cols:120, palset:'day', groundTile:GND,
+  gaps:[], plat:[], block:[], manna:[], foes:[], chk:0, goal:118};
+/* ====================== deterministic RNG (mulberry32) ===================== */
+function rng32(seed){let a=seed>>>0;return function(){a|=0;a=a+0x6D2B79F5|0;
+  let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;
+  return ((t^t>>>14)>>>0)/4294967296;}}
+/* ====================== game state ======================================== */
+const G={state:'title',score:0,lives:3,level:0,time:300,manna:0,frame:0,
+  x:0,y:0,vx:0,vy:0,face:1,grounded:false,jumpTier:0,airMax:PHYS.MAX_WALK,
+  camX:0,checkpoint:0,tiles:null,cols:0,ents:[],specs:[],specIdx:0,
+  parted:false,seaFrames:0,timeAcc:0,dieTimer:0,clearTimer:0,paused:false,
+  simMode:false,rand:rng32(0x1D2026),soundOn:true,autoRun:true,
+  extraGiven:false,levelSet:LEVELS,
+  audit:{manna:0,stompT:0,stompS:0,clear:0,timeBonus:0},
+  entry:{active:false,name:['A','A','A'],pos:0,latch:true}};
+const PW=10, PH=14;             // player AABB px
+function tileAt(c,r){if(c<0||c>=G.cols)return STONE; if(r<0)return AIR;
+  if(r>=ROWS)return AIR; return G.tiles[r*G.cols+c];}
+function solidPx(x,y){return SOLID.has(tileAt(Math.floor(x/T),Math.floor(y/T)));}
+function boxHitsSolid(x,y){ // player box test, px coords of top-left
+  return solidPx(x,y)||solidPx(x+PW-1,y)||solidPx(x,y+PH-1)||solidPx(x+PW-1,y+PH-1)
+       ||solidPx(x,y+7)||solidPx(x+PW-1,y+7);}
+function buildLevel(L){
+  G.cols=L.cols; G.tiles=new Uint8Array(L.cols*ROWS);
+  for(let c=0;c<L.cols;c++){G.tiles[13*L.cols+c]=L.groundTile;G.tiles[14*L.cols+c]=L.groundTile;}
+  for(const[gc,gl]of L.gaps)for(let c=gc;c<gc+gl;c++){G.tiles[13*L.cols+c]=AIR;G.tiles[14*L.cols+c]=AIR;}
+  for(const[pc,pr,pl]of L.plat)for(let c=pc;c<pc+pl;c++)G.tiles[pr*L.cols+c]=BRICK;
+  for(const[bc,br,bw,bh]of L.block)for(let c=bc;c<bc+bw;c++)for(let r=br;r<br+bh;r++)
+    G.tiles[r*L.cols+c]=STONE;
+  if(L.sea)for(let c=L.sea.wall;c<L.sea.wall+3;c++)for(let r=2;r<13;r++)
+    G.tiles[r*L.cols+c]=WATER;
+  // entity spec stream, x-sorted (spawn ahead of camera, cull behind — A-26)
+  const sp=[];
+  for(const[mc,mr,ml]of L.manna)for(let i=0;i<ml;i++)sp.push({x:(mc+i)*T+4,y:mr*T+4,t:'manna'});
+  for(const[fc,ft]of L.foes)sp.push({x:fc*T,y:12*T-16,t:ft});
+  if(L.chk)sp.push({x:L.chk*T,y:9*T,t:'chk'});
+  if(L.sea)sp.push({x:L.sea.trigger*T,y:11*T,t:'seatrig'});
+  sp.push({x:L.goal*T,y:9*T,t:'goal'});
+  sp.sort((a,b)=>a.x-b.x);
+  G.specs=sp; G.specIdx=0; G.ents=[];
+}
+function loadLevel(n,fromCheck){
+  const L=G.levelSet[n]; buildLevel(L);
+  G.level=n; G.parted=false; G.seaFrames=0; G.time=300; G.timeAcc=0;
+  const startX=fromCheck?G.checkpoint:2*T;
+  if(!fromCheck)G.checkpoint=2*T;
+  G.x=startX*4096; G.y=(11*T)*256; G.vx=0; G.vy=0; G.face=1;
+  G.grounded=false; G.camX=Math.max(0,Math.min(startX-96,L.cols*T-W)); G.frame=0;
+  // forward-only law survives respawn: camera restarts at spawn, never rewinds mid-life
+}
+function newGame(seed){
+  G.rand=rng32(seed===undefined?0x1D2026:seed);
+  G.score=0;G.lives=3;G.manna=0;G.extraGiven=false;G.checkpoint=2*T;
+  G.audit={manna:0,stompT:0,stompS:0,clear:0,timeBonus:0};
+  G.levelSet=LEVELS; loadLevel(0,false); G.state='play'; G.dieTimer=0;G.clearTimer=0;
+}
+/* ====================== entities ========================================== */
+function spawnAhead(){
+  const limit=G.camX+W+T;
+  while(G.specIdx<G.specs.length&&G.specs[G.specIdx].x<limit){
+    const s=G.specs[G.specIdx++];
+    const e={x:s.x,y:s.y,t:s.t,vx:0,vy:0,born:G.frame,alive:true,dir:-1};
+    if(s.t==='task')e.vx=-0x800;            // 0.5 px/f
+    if(s.t==='serp')e.vx=-0xC00;            // 0.75 px/f
+    G.ents.push(e);
+  }
+  // cull behind camera (goal/chk/triggers persist while on or ahead of screen)
+  G.ents=G.ents.filter(e=>e.alive&&e.x>G.camX-48);
+}
+function entSolid(x,y){return solidPx(x,y);}
+function stepEnt(e){
+  if(e.t==='manna'){ if(G.frame-e.born>=600)e.alive=false; return;} // spoils — UX-35, Ex.16
+  if(e.t==='chk'||e.t==='goal'||e.t==='seatrig')return;
+  // walkers + chariots: gravity, tile collide, patrol turn
+  e.vy=Math.min(e.vy+0x70,PHYS.FALL_CAP);
+  let ny=e.y+e.vy/256;
+  if(e.vy>0&&(entSolid(e.x+2,ny+16)||entSolid(e.x+13,ny+16))){
+    ny=Math.floor((ny+16)/T)*T-16; e.vy=0;}
+  e.y=ny;
+  const dx=e.vx/4096; let nx=e.x+dx;
+  const aheadX=dx<0?nx+1:nx+14;
+  const wall=entSolid(aheadX,e.y+8);
+  const cliff=!entSolid(aheadX,e.y+17)&&e.vy===0;
+  if(e.t==='chariot'){ if(wall)e.vx=Math.abs(e.vx); e.x=nx; return;}
+  if(wall||cliff){e.vx=-e.vx;}else e.x=nx;
+}
+function overlap(ax,ay,aw,ah,bx,by,bw,bh){
+  return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by;}
+/* ====================== core step (deterministic) ========================= */
+function killPlayer(){ if(G.state!=='play')return;
+  G.state='dying';G.dieTimer=0;G.vy=-1536;sfx('die');}
+function levelClear(worldEnd){
+  G.state='clear';G.clearTimer=0;
+  G.score+=400;G.audit.clear+=400;
+  const tb=G.time*10;G.score+=tb;G.audit.timeBonus+=tb;
+  if(worldEnd){G.score+=2000;G.audit.clear+=2000;}
+  checkExtra();sfx('clear');}
+function checkExtra(){if(!G.extraGiven&&G.score>=10000){G.extraGiven=true;G.lives++;sfx('extra');}}
+function stepCore(inp){
+  G.frame++;
+  if(G.state==='dying'){G.dieTimer++;G.vy=Math.min(G.vy+0x70,PHYS.FALL_CAP+512);
+    G.y+=G.vy; if(G.dieTimer>110){
+      G.lives--; if(G.lives<0){G.state='over';}
+      else{loadLevel(G.level,G.checkpoint>2*T);G.state='play';}
+    } return;}
+  if(G.state==='clear'){G.clearTimer++;
+    if(G.clearTimer>90){
+      if(G.level+1<G.levelSet.length){G.checkpoint=2*T;loadLevel(G.level+1,false);G.state='play';}
+      else G.state='victory';
+    } return;}
+  if(G.state!=='play')return;
+  // --- timer
+  if(++G.timeAcc>=24){G.timeAcc=0;if(--G.time<=0){killPlayer();return;}}
+  // --- jump initiation (edge-triggered; tier locked at takeoff — SMBDIS 6095-6123)
+  const wasHeld=G.jumpHeldPrev||false;
+  if(inp.jump&&!wasHeld&&G.grounded){
+    const a=Math.abs(G.vx);let tier=4;
+    for(let i=0;i<4;i++)if(a<PHYS.TIER[i]){tier=i;break;}
+    G.jumpTier=tier;G.vy=PHYS.JUMP_V[tier];G.grounded=false;
+    G.airMax=a>=PHYS.MAX_WALK?PHYS.MAX_RUN:PHYS.MAX_WALK;
+    sfx('jump');}
+  G.jumpHeldPrev=inp.jump;
+  // --- horizontal physics
+  const dir=(inp.right?1:0)-(inp.left?1:0);
+  if(G.grounded){
+    if(dir!==0){
+      if(G.vx!==0&&Math.sign(G.vx)!==dir){        // skid
+        G.vx+=dir*PHYS.DEC_ABOVE;
+        if(Math.sign(G.vx)===dir)G.vx=0;
+      }else{
+        const max=inp.run?PHYS.MAX_RUN:PHYS.MAX_WALK;
+        const acc=inp.run?PHYS.ACC_RUN:PHYS.ACC_WALK;
+        G.vx+=dir*acc;
+        if(Math.abs(G.vx)>max)G.vx=dir*max;      // clamp [ASSUMED vs gentle decay]
+      }
+      G.face=dir;
+    }else if(G.vx!==0){                           // release decel
+      const s=Math.sign(G.vx);G.vx-=s*PHYS.ACC_WALK;
+      if(Math.sign(G.vx)!==s)G.vx=0;
+    }
+  }else{
+    if(dir!==0){G.vx+=dir*PHYS.ACC_WALK;
+      if(Math.abs(G.vx)>G.airMax)G.vx=Math.sign(G.vx)*G.airMax;}
+  }
+  // --- move X, substepped (INV-1/INV-12), snap on hit (INV-20)
+  let rem=G.vx;
+  while(rem!==0){
+    const st=Math.max(-4096,Math.min(4096,rem));rem-=st;
+    G.x+=st;
+    const px=G.x/4096,py=G.y/256;
+    if(boxHitsSolid(px,py)){
+      if(st>0){const c=Math.floor((px+PW)/T);G.x=(c*T-PW)*4096;}
+      else{const c=Math.floor(px/T);G.x=((c+1)*T)*4096;}
+      G.vx=0;rem=0;
+    }
+  }
+  // camera left clamp (player may not leave the screen backwards)
+  if(G.x<G.camX*4096){G.x=G.camX*4096;if(G.vx<0)G.vx=0;}
+  // --- move Y (position += v, then v += force — the derived order, SCOPE P2)
+  let remy=G.vy;
+  while(remy!==0){
+    const st=Math.max(-2048,Math.min(2048,remy));remy-=st;
+    G.y+=st;
+    const px=G.x/4096,py=G.y/256;
+    if(boxHitsSolid(px,py)){
+      if(st>0){const r=Math.floor((py+PH)/T);G.y=(r*T-PH)*256;G.vy=0;G.grounded=true;remy=0;}
+      else{const r=Math.floor(py/T);G.y=((r+1)*T)*256;G.vy=0;remy=0;sfx('bump');}
+    }
+  }
+  // gravity AFTER movement; regime by rise/hold (the variable jump, A-27)
+  if(!G.grounded){
+    const g=(G.vy<0&&inp.jump)?PHYS.GRAV_HOLD[G.jumpTier]:PHYS.GRAV_FALL[G.jumpTier];
+    G.vy=Math.min(G.vy+g,PHYS.FALL_CAP);
+  }
+  // grounded re-check (walked off an edge? 1985-strict: no coyote frames)
+  if(G.grounded){
+    const px=G.x/4096,py=G.y/256;
+    if(!solidPx(px+1,py+PH)&&!solidPx(px+PW-1,py+PH)){G.grounded=false;G.jumpTier=2;
+      G.airMax=Math.abs(G.vx)>=PHYS.MAX_WALK?PHYS.MAX_RUN:PHYS.MAX_WALK;}
+  }
+  // fell into a pit
+  if(G.y/256>H+16){killPlayer();return;}
+  // --- camera: forward-only (the 1985 law, P4)
+  const target=Math.floor(G.x/4096)-96;
+  if(target>G.camX)G.camX=Math.min(target,G.cols*T-W);
+  // --- entities
+  spawnAhead();
+  const L=G.levelSet[G.level];
+  if(G.parted){G.seaFrames++;
+    if(G.seaFrames%300===120&&G.ents.filter(e=>e.t==='chariot').length<3){
+      G.ents.push({x:G.camX-40,y:12*T-16,t:'chariot',vx:0x1E80,vy:0,born:G.frame,alive:true});
+      sfx('chariot');}}
+  for(const e of G.ents)stepEnt(e);
+  // --- interactions
+  const px=G.x/4096,py=G.y/256;
+  for(const e of G.ents){
+    if(!e.alive)continue;
+    if(e.t==='manna'){
+      if(overlap(px,py,PW,PH,e.x,e.y,8,8)){e.alive=false;G.manna++;
+        G.score+=100;G.audit.manna+=100;checkExtra();sfx('manna');}
+      continue;}
+    if(e.t==='chk'){
+      if(px+PW>e.x&&G.checkpoint<e.x){G.checkpoint=e.x;sfx('chk');}
+      continue;}
+    if(e.t==='seatrig'){
+      if(!G.parted&&px+PW>e.x){
+        G.parted=true;
+        for(let c=L.sea.wall;c<L.sea.wall+3;c++)for(let r=2;r<13;r++)
+          G.tiles[r*G.cols+c]=AIR;
+        sfx('part');}
+      continue;}
+    if(e.t==='goal'){
+      if(px+PW>e.x){levelClear(G.level===G.levelSet.length-1);}
+      continue;}
+    // hostiles
+    if(overlap(px,py,PW,PH,e.x,e.y+2,15,14)){
+      const stompable=e.t!=='chariot';
+      if(stompable&&G.vy>0&&py+PH-(e.y+2)<9){
+        e.alive=false;G.vy=-1024;
+        const v=e.t==='serp'?200:100;G.score+=v;
+        if(e.t==='serp')G.audit.stompS+=v;else G.audit.stompT+=v;
+        checkExtra();sfx('stomp');
+      }else{killPlayer();return;}
+    }
+  }
+}
+/* ====================== audio (APU-flavoured, WebAudio) =================== */
+let AC=null;
+function ac(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}return AC;}
+function tone(type,f0,f1,dur,vol){const c=ac();if(!c||!G.soundOn||G.simMode)return;
+  const o=c.createOscillator(),g=c.createGain();o.type=type;
+  o.frequency.setValueAtTime(f0,c.currentTime);
+  o.frequency.exponentialRampToValueAtTime(Math.max(30,f1),c.currentTime+dur);
+  g.gain.setValueAtTime(vol,c.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,c.currentTime+dur);
+  o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+dur);}
+function noise(dur,vol){const c=ac();if(!c||!G.soundOn||G.simMode)return;
+  const n=c.sampleRate*dur,b=c.createBuffer(1,n,c.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=Math.random()*2-1;
+  const s=c.createBufferSource(),g=c.createGain();s.buffer=b;
+  g.gain.setValueAtTime(vol,c.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,c.currentTime+dur);
+  s.connect(g);g.connect(c.destination);s.start();}
+function sfx(k){
+  if(k==='jump')tone('square',260,620,.16,.12);
+  else if(k==='manna')tone('triangle',880,1320,.12,.15);
+  else if(k==='stomp')noise(.09,.15);
+  else if(k==='bump')tone('square',140,90,.07,.1);
+  else if(k==='die'){tone('square',600,80,.5,.14);}
+  else if(k==='clear'){tone('square',520,1040,.35,.12);tone('triangle',660,1320,.4,.1);}
+  else if(k==='chk')tone('triangle',520,780,.2,.12);
+  else if(k==='part'){noise(.9,.12);tone('triangle',70,180,1.1,.16);}
+  else if(k==='chariot')noise(.25,.08);
+  else if(k==='extra')tone('square',780,1560,.4,.12);
+}
+/* ====================== high score table (shared protocol) ================ */
+const KEY='arcade.deliverance.scores';
+const HiScore={
+  list(){try{const r=localStorage.getItem(KEY);return r?JSON.parse(r):[];}catch(e){return G._mem||[];}},
+  save(l){try{localStorage.setItem(KEY,JSON.stringify(l));}catch(e){G._mem=l;}},
+  qualifies(s){const l=HiScore.list();return s>0&&(l.length<8||s>l[l.length-1].s);},
+  add(n,s){let l=HiScore.list();l.push({n,s});l.sort((a,b)=>b.s-a.s);l=l.slice(0,8);HiScore.save(l);},
+  clear(){HiScore.save([]);}
+};
+const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.';
+function startEntryOrTitle(score){
+  if(HiScore.qualifies(score)){G.entry={active:true,name:['A','A','A'],pos:0,latch:true};
+    G.state='entry';}
+  else G.state='title';
+}
+/* ====================== feedback (pilot contract, rung 5/6/7) ============= */
+const Feedback={
+  isOpen:false,
+  open(){Feedback.isOpen=true;G.paused=true;document.getElementById('fb').classList.add('open');},
+  close(){Feedback.isOpen=false;G.paused=false;document.getElementById('fb').classList.remove('open');},
+  buildReport(){
+    const notes=document.getElementById('fbText').value||'(no notes)';
+    return ['DELIVERANCE playtest report','notes: '+notes,
+      'state: '+G.state,'score: '+G.score,'level: '+(G.level+1)+' '+G.levelSet[G.level].name,
+      'lives: '+G.lives,'time: '+G.time,
+      'date: '+new Date().toISOString(),
+      'viewport: '+window.innerWidth+'x'+window.innerHeight,
+      'ua: '+navigator.userAgent].join('\n');
+  }
+};
+document.getElementById('bF').onclick=()=>Feedback.isOpen?Feedback.close():Feedback.open();
+document.getElementById('fbClose').onclick=()=>Feedback.close();
+document.getElementById('fbGit').onclick=()=>{
+  const r=Feedback.buildReport();
+  window.open('https://github.com/Sobevista/arcade-progression/issues/new?title='
+    +encodeURIComponent('[deliverance] playtest report')
+    +'&body='+encodeURIComponent(r),'_blank');};
+document.getElementById('fbCopy').onclick=()=>{
+  const r=Feedback.buildReport();
+  if(navigator.clipboard)navigator.clipboard.writeText(r);
+};
+/* ====================== input ============================================= */
+const keys={left:false,right:false,run:false,jump:false};
+addEventListener('keydown',e=>{
+  ac();
+  if(G.state==='entry'){entryKey(e.key);e.preventDefault();return;}
+  if(e.key==='ArrowLeft'||e.key==='a')keys.left=true;
+  if(e.key==='ArrowRight'||e.key==='d')keys.right=true;
+  if(e.key==='Shift'||e.key==='z')keys.run=true;
+  if(e.key===' '||e.key==='ArrowUp'||e.key==='w'){keys.jump=true;e.preventDefault();}
+  if(e.key==='Enter'){if(G.state==='title')newGame();
+    else if(G.state==='victory'||G.state==='over')startEntryOrTitle(G.score);}
+  if(e.key==='Escape'){G.state='title';}
+  if(e.key==='p'||e.key==='P')G.paused=!G.paused;
+  if(e.key==='f'||e.key==='F')Feedback.isOpen?Feedback.close():Feedback.open();
+});
+addEventListener('keyup',e=>{
+  if(e.key==='ArrowLeft'||e.key==='a')keys.left=false;
+  if(e.key==='ArrowRight'||e.key==='d')keys.right=false;
+  if(e.key==='Shift'||e.key==='z')keys.run=false;
+  if(e.key===' '||e.key==='ArrowUp'||e.key==='w')keys.jump=false;
+});
+function entryKey(k){
+  const en=G.entry;
+  if(en.latch){if(k===' '||k==='Enter')return;en.latch=false;} // INV-15: held buttons
+  if(k==='ArrowUp'||k==='w'){const i=(LETTERS.indexOf(en.name[en.pos])+1)%LETTERS.length;
+    en.name[en.pos]=LETTERS[i];}
+  if(k==='ArrowDown'||k==='s'){const i=(LETTERS.indexOf(en.name[en.pos])+LETTERS.length-1)%LETTERS.length;
+    en.name[en.pos]=LETTERS[i];}
+  if(k==='ArrowLeft'||k==='a')en.pos=Math.max(0,en.pos-1);
+  if(k==='ArrowRight'||k==='d')en.pos=Math.min(2,en.pos+1);
+  if(k==='Enter'||k===' '){
+    if(en.pos<2)en.pos++;
+    else{HiScore.add(en.name.join(''),G.score);G.state='title';}
+  }
+}
+/* touch: edge buttons + swivel stick (left half steer, right half = jump) */
+const touch={left:false,right:false,jump:false};
+const Stick={active:false,ox:0,id:null};
+window.Stick=Stick;
+function bindHold(id,on,off){const el=document.getElementById(id);
+  el.addEventListener('touchstart',e=>{e.preventDefault();ac();on();},{passive:false});
+  el.addEventListener('touchend',e=>{e.preventDefault();off();},{passive:false});
+  el.addEventListener('touchcancel',()=>off());}
+bindHold('bL',()=>touch.left=true,()=>touch.left=false);
+bindHold('bR',()=>touch.right=true,()=>touch.right=false);
+document.getElementById('bP').onclick=()=>{ac();G.paused=!G.paused;};
+document.getElementById('bT').onclick=()=>{G.state='title';};
+document.getElementById('bS').onclick=function(){G.soundOn=!G.soundOn;
+  this.textContent='SOUND:'+(G.soundOn?'ON':'OFF');};
+document.getElementById('bB').onclick=function(){G.autoRun=!G.autoRun;
+  this.textContent='RUN:'+(G.autoRun?'AUTO':'OFF');};
+const cv=document.getElementById('screen');
+cv.addEventListener('touchstart',e=>{e.preventDefault();ac();
+  document.body.classList.add('touch');
+  for(const t of e.changedTouches){
+    const r=cv.getBoundingClientRect();
+    if(t.clientX-r.left<r.width/2){Stick.active=true;Stick.ox=t.clientX;Stick.id=t.identifier;}
+    else{touch.jump=true;
+      if(G.state==='title')newGame();
+      else if(G.state==='victory'||G.state==='over')startEntryOrTitle(G.score);}
+  }},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();
+  for(const t of e.changedTouches)if(t.identifier===Stick.id){
+    const dx=t.clientX-Stick.ox;
+    touch.left=dx<-12;touch.right=dx>12;}},{passive:false});
+cv.addEventListener('touchend',e=>{e.preventDefault();
+  for(const t of e.changedTouches){
+    if(t.identifier===Stick.id){Stick.active=false;Stick.id=null;touch.left=false;touch.right=false;}
+    else touch.jump=false;}},{passive:false});
+if('ontouchstart' in window)document.body.classList.add('touch');
+function liveInput(){
+  return {left:keys.left||touch.left,right:keys.right||touch.right,
+    run:keys.run||(document.body.classList.contains('touch')&&G.autoRun&&(touch.left||touch.right)),
+    jump:keys.jump||touch.jump};
+}
+/* ====================== render ============================================ */
+const ctx=cv.getContext('2d');
+let SCALE=2;
+function fit(){
+  const availW=window.innerWidth-8, availH=window.innerHeight-140;
+  SCALE=Math.max(1,Math.min(Math.floor(availW/W),Math.floor(availH/H)));
+  cv.style.width=(W*SCALE)+'px';cv.style.height=(H*SCALE)+'px';
+}
+addEventListener('resize',fit);fit();
+const PALSETS={
+  day:{bg:PAL.sky,gnd:PAL.tan,gnd2:PAL.brown,brick:PAL.red,stone:PAL.gray,txt:PAL.white},
+  night:{bg:PAL.black,gnd:PAL.navy,gnd2:PAL.dblue,brick:PAL.purple,stone:PAL.dgray,txt:PAL.white},
+  sea:{bg:PAL.lblue,gnd:PAL.sand,gnd2:PAL.brown,brick:PAL.red,stone:PAL.gray,txt:PAL.black}
+};
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h);}
+function text(s,x,y,c,size){ctx.fillStyle=c||PAL.white;
+  ctx.font=(size||8)+'px monospace';ctx.textBaseline='top';ctx.fillText(s,x,y);}
+function drawTile(id,sx,sy,pal,c,r){
+  if(id===AIR)return;
+  if(id===GND||id===SAND){rect(sx,sy,T,T,pal.gnd);rect(sx,sy,T,2,pal.gnd2);
+    rect(sx+((c*7)%11),sy+6+((r*5)%7),2,2,pal.gnd2);}
+  else if(id===BRICK){rect(sx,sy,T,T,pal.brick);
+    for(let i=0;i<2;i++)rect(sx,sy+i*8,T,1,PAL.black);
+    rect(sx+8,sy,1,8,PAL.black);rect(sx+4,sy+8,1,8,PAL.black);rect(sx+12,sy+8,1,8,PAL.black);}
+  else if(id===STONE){rect(sx,sy,T,T,pal.stone);rect(sx+1,sy+1,T-2,T-2,PAL.dgray);
+    rect(sx+2,sy+2,4,4,pal.stone);}
+  else if(id===WATER){rect(sx,sy,T,T,PAL.mblue);
+    rect(sx,sy+((G.frame>>3)+r)%8,T,2,PAL.lblue);}
+}
+function drawShepherd(sx,sy){
+  const f=G.face,walk=G.grounded&&Math.abs(G.vx)>200?(G.frame>>3)%2:0;
+  const jump=!G.grounded;
+  // 12x16 robed figure + staff, all-original art
+  rect(sx+2,sy+5,8,9,PAL.tan);                    // robe
+  rect(sx+3,sy+1,6,5,PAL.skin);                   // head
+  rect(sx+3,sy+1,6,2,PAL.dbrown);                 // hair
+  rect(sx+(f>0?4:2),sy+8,6,2,PAL.brown);          // belt
+  if(walk===0){rect(sx+3,sy+14,3,2,PAL.dbrown);rect(sx+7,sy+14,3,2,PAL.dbrown);}
+  else{rect(sx+2,sy+14,3,2,PAL.dbrown);rect(sx+8,sy+14,3,2,PAL.dbrown);}
+  const stx=f>0?sx+11:sx-1;                       // staff
+  rect(stx,jump?sy-4:sy,2,jump?18:15,PAL.brown);
+  rect(f>0?stx-2:stx,jump?sy-4:sy,4,2,PAL.brown); // crook
+}
+function drawEnt(e,pal){
+  const sx=e.x-G.camX,sy=e.y;
+  if(sx<-32||sx>W+16)return;
+  if(e.t==='manna'){const age=G.frame-e.born;
+    const fade=age>520?(age%8<4):true;
+    if(fade){rect(sx,sy+2,8,5,PAL.white);rect(sx+1,sy+1,6,7,PAL.white);
+      if((G.frame>>4)%2)rect(sx+3,sy-2,2,2,PAL.yellow);}}
+  else if(e.t==='task'){rect(sx+2,sy+2,12,14,PAL.dgray);rect(sx+4,sy,8,4,PAL.skin);
+    rect(sx+2,sy,12,2,PAL.dbrown);
+    rect(sx+(e.vx<0?0:13),sy+6,3,1,PAL.brown);}   // the whip hand
+  else if(e.t==='serp'){rect(sx,sy+10,16,6,PAL.green);rect(sx+(e.vx<0?0:11),sy+7,5,5,PAL.lgreen);
+    rect(sx+(e.vx<0?1:13),sy+9,2,1,PAL.red);}
+  else if(e.t==='chariot'){rect(sx,sy+2,26,9,PAL.yellow);rect(sx+18,sy-2,8,6,PAL.red);
+    rect(sx+2,sy+10,6,6,PAL.dbrown);rect(sx+16,sy+10,6,6,PAL.dbrown);
+    rect(sx+24,sy+4,6,8,PAL.brown);}              // horse-ish mass, stylised
+  else if(e.t==='chk'){rect(sx+4,sy-24,8,60,PAL.white);rect(sx+2,sy-28,12,8,PAL.gray);
+    if((G.frame>>4)%2)rect(sx+6,sy-32,4,4,PAL.yellow);} // pillar of cloud
+  else if(e.t==='goal'){
+    if(G.level===2){for(let i=0;i<3;i++)rect(sx+i*6,sy+40-i*7,5,7+i*7,PAL.gray);} // standing stones
+    else{rect(sx,sy,6,64,PAL.stone||PAL.gray);rect(sx+18,sy,6,64,PAL.gray);
+      rect(sx,sy,24,8,PAL.gray);}                 // the gate
+  }
+}
+function drawSea(pal){
+  const L=G.levelSet[G.level];if(!L.sea)return;
+  if(G.parted){
+    const s=(L.sea.wall+3)*T-G.camX,e=L.sea.end*T-G.camX;
+    const a=Math.max(0,s),b=Math.min(W,e);
+    if(b>a){ // towering water over the corridor, held back
+      for(let x=a;x<b;x+=T){
+        rect(x,0,T,40+6*Math.sin((x+G.frame)/17),PAL.mblue);
+        rect(x,36+6*Math.sin((x+G.frame)/17),T,3,PAL.white);}
+    }
+  }
+}
+function drawHUD(pal){
+  rect(0,0,W,16,PAL.black);
+  const hi=HiScore.list()[0];
+  text('SCORE '+String(G.score).padStart(6,'0'),4,1,PAL.white);
+  text('HI '+String(hi?hi.s:0).padStart(6,'0'),100,1,PAL.gray);
+  text('W1-'+(G.level+1),176,1,PAL.white);
+  text('T'+String(Math.max(0,G.time)).padStart(3,'0'),214,1,G.time<60?PAL.red:PAL.white);
+  text('MANNA x'+G.manna,4,8,PAL.yellow);
+  for(let i=0;i<Math.max(0,G.lives);i++)rect(100+i*8,9,5,5,PAL.tan);
+}
+function render(){
+  const L=G.levelSet[G.level],pal=PALSETS[L.palset]||PALSETS.day;
+  rect(0,0,W,H,pal.bg);
+  if(G.state==='title'){drawTitle();return;}
+  if(G.state==='entry'){drawEntry();return;}
+  // world
+  const c0=Math.floor(G.camX/T),c1=c0+W/T+1;
+  for(let c=c0;c<=c1;c++)for(let r=0;r<ROWS;r++){
+    const id=tileAt(c,r);if(id)drawTile(id,c*T-G.camX,r*T,pal,c,r);}
+  drawSea(pal);
+  for(const e of G.ents)drawEnt(e,pal);
+  if(G.state!=='over')drawShepherd(Math.round(G.x/4096)-G.camX-1,Math.round(G.y/256));
+  drawHUD(pal);
+  if(G.state==='clear'){text(G.level===2?'THE SEA CLOSES BEHIND YOU':'LEVEL CLEAR',
+    70,100,PAL.white);text('TIME BONUS '+(G.time*10),80,112,PAL.yellow);}
+  if(G.state==='victory'){rect(20,60,216,90,PAL.black);
+    text('DELIVERANCE',88,70,PAL.yellow);
+    text('THE PEOPLE ARE THROUGH.',60,90,PAL.white);
+    text('SCORE '+G.score,92,104,PAL.white);
+    text('PRESS ENTER / TAP',80,126,PAL.gray);}
+  if(G.state==='over'){rect(60,90,136,40,PAL.black);
+    text('GAME OVER',96,100,PAL.red);text('PRESS ENTER / TAP',76,114,PAL.gray);}
+  if(G.paused&&!Feedback.isOpen){rect(96,104,64,16,PAL.black);text('PAUSED',108,108,PAL.white);}
+}
+function drawTitle(){
+  rect(0,0,W,H,PAL.black);
+  text('DELIVERANCE',60,40,PAL.yellow,16);
+  text('AN EXODUS STORY',88,62,PAL.lblue);
+  text('LET MY PEOPLE GO',86,74,PAL.gray);
+  const l=HiScore.list();
+  text('— DELIVERERS —',82,94,PAL.white);
+  for(let i=0;i<8;i++){const e=l[i];
+    text((i+1)+'. '+(e?e.n+'  '+String(e.s).padStart(6,'0'):'---  ------'),
+      78,106+i*10,e?PAL.white:PAL.dgray);}
+  text('ENTER / TAP RIGHT SIDE TO BEGIN',52,196,PAL.green);
+  text('ARROWS MOVE  SHIFT RUN  SPACE JUMP',44,208,PAL.gray);
+  text('rung 7 — build in public',86,226,PAL.dgray);
+}
+function drawEntry(){
+  rect(0,0,W,H,PAL.black);
+  text('A NAME AMONG THE PEOPLE',66,60,PAL.yellow);
+  text('SCORE '+G.score,96,80,PAL.white);
+  const en=G.entry;
+  for(let i=0;i<3;i++){
+    text(en.name[i],108+i*16,110,i===en.pos?PAL.yellow:PAL.white,14);
+    if(i===en.pos&&(G.frame>>4)%2)rect(108+i*16,128,10,2,PAL.yellow);}
+  text('UP/DOWN LETTER  ENTER NEXT',62,150,PAL.gray);
+}
+/* ====================== sim contract (bots drive real inputs only) ======== */
+const sim={
+  input:{left:false,right:false,run:false,jump:false},
+  reset(seed){G.simMode=true;newGame(seed);},
+  step(dt){const n=Math.max(1,Math.round(dt/(1000/60)));
+    for(let i=0;i<n;i++){G.frame%1?0:0;stepCore({left:!!sim.input.left,
+      right:!!sim.input.right,run:!!sim.input.run,jump:!!sim.input.jump});}},
+  observe(){
+    const px=G.x/4096,py=G.y/256;
+    // read-only sensors for bots (observation, not state access)
+    let gapAhead=999,wallAhead=999,enemyAhead=999;
+    const fc=Math.floor((px+PW)/T),fr=Math.floor((py+PH)/T);
+    for(let d=1;d<=8;d++){let any=false;
+      for(let r=fr;r<ROWS;r++)if(SOLID.has(tileAt(fc+d,r))){any=true;break;}
+      if(!any){gapAhead=(fc+d)*T-(px+PW);break;}}
+    for(let d=1;d<=4;d++){
+      if(SOLID.has(tileAt(fc+d,fr-1))||SOLID.has(tileAt(fc+d,Math.floor(py/T)))){
+        wallAhead=(fc+d)*T-(px+PW);break;}}
+    for(const e of G.ents)if((e.t==='task'||e.t==='serp')&&e.alive){
+      const dx=e.x-px;if(dx>0&&dx<128&&Math.abs(e.y-py)<40)enemyAhead=Math.min(enemyAhead,dx);}
+    return {x:px,y:py,vx:G.vx,vy:G.vy,grounded:G.grounded,camX:G.camX,
+      state:G.state,score:G.score,lives:G.lives,time:G.time,level:G.level,
+      manna:G.manna,ents:G.ents.length,gapAhead,wallAhead,enemyAhead};
+  }
+};
+/* ====================== in-page verification suite (SCOPE P1-P10) ========= */
+function loadTestLevel(){G.levelSet=[TESTLEVEL];loadLevel(0,false);G.state='play';}
+const tests={
+  results:{},
+  async runAll(){
+    const R={};
+    R.P1_speeds=this.speeds(); R.P2_jumps=this.jumps();
+    R.P3_determinism=this.determinism(); R.P4_camera=this.camera();
+    R.P5_collision=this.collision(); R.P6_streaming=this.streaming();
+    R.P7_winnable=this.winnable(); R.P8_scoring=this.scoring();
+    R.P10_frame=this.frameCost();
+    let pass=0,fail=0;
+    for(const k in R){if(R[k].pass)pass++;else fail++;}
+    R.SUMMARY={pass,fail,verdict:fail===0?'ALL GREEN':'FAILURES PRESENT'};
+    this.results=R;G.simMode=false;return R;
+  },
+  speeds(){ sim.reset();G.levelSet=[FLATLEVEL];loadLevel(0,false);G.state='play';
+    sim.input={left:false,right:true,run:false,jump:false};
+    for(let i=0;i<180;i++)sim.step(1000/60);
+    const a=sim.observe().x;for(let i=0;i<64;i++)sim.step(1000/60);
+    const walk=(sim.observe().x-a);
+    sim.reset();G.levelSet=[FLATLEVEL];loadLevel(0,false);G.state='play';
+    sim.input={left:false,right:true,run:true,jump:false};
+    for(let i=0;i<180;i++)sim.step(1000/60);
+    const b=sim.observe().x;for(let i=0;i<64;i++)sim.step(1000/60);
+    const run=(sim.observe().x-b);
+    return {pass:walk===96&&run===160,walkPer64:walk,runPer64:run,expect:'96 / 160'};
+  },
+  _apex(frames,useRun){ sim.reset();G.levelSet=[FLATLEVEL];loadLevel(0,false);G.state='play';
+    sim.input={left:false,right:useRun,run:useRun,jump:false};
+    for(let i=0;i<(useRun?140:30);i++)sim.step(1000/60);
+    const y0=sim.observe().y;let minY=y0;
+    sim.input.jump=true;
+    for(let i=0;i<frames;i++){sim.step(1000/60);minY=Math.min(minY,sim.observe().y);}
+    sim.input.jump=false;
+    for(let i=0;i<90;i++){sim.step(1000/60);minY=Math.min(minY,sim.observe().y);}
+    return y0-minY;
+  },
+  jumps(){
+    const stand=this._apex(90,false), tap=this._apex(1,false), run=this._apex(90,true);
+    const ok=Math.abs(stand-66)<=1&&Math.abs(run-82)<=1&&tap<stand-8&&run>stand;
+    return {pass:ok,standing:stand,running:run,tap1frame:tap,expect:'66 / 82 / tap lower'};
+  },
+  determinism(){
+    const script=f=>({left:false,right:true,run:f%7<5,jump:(f%53)<10});
+    const runOnce=()=>{sim.reset(7);let mid='';
+      for(let f=0;f<3000;f++){sim.input=script(f);sim.step(1000/60);
+        if(f===1500)mid=JSON.stringify(sim.observe());}
+      return mid+'|'+JSON.stringify(sim.observe());};
+    const a=runOnce(),b=runOnce();
+    return {pass:a===b,identical:a===b};
+  },
+  camera(){
+    sim.reset(7);let last=-1,mono=true,clamp=true;
+    const script=f=>({left:f%11===0,right:f%11!==0,run:true,jump:(f%47)<8});
+    for(let f=0;f<3000;f++){sim.input=script(f);sim.step(1000/60);
+      const o=sim.observe();
+      if(o.state!=='play')break;
+      if(o.camX<last)mono=false;last=o.camX;
+      if(o.x<o.camX-0.01)clamp=false;}
+    return {pass:mono&&clamp,monotonic:mono,leftClamp:clamp};
+  },
+  collision(){
+    let ok=true,detail=[];
+    for(let n=0;n<16;n++){ sim.reset();loadTestLevel();
+      sim.input={left:false,right:true,run:true,jump:false};
+      for(let i=0;i<300;i++){sim.step(1000/60);
+        const o=sim.observe();
+        if(boxHitsSolid(o.x,o.y)){ok=false;detail.push('inside solid at offset '+n);break;}
+        if(o.state!=='play')break;}
+      const o=sim.observe();
+      if(o.x>24*T-PW+0.01&&o.x<25*T){ok=false;detail.push('passed the wall n='+n);}
+    }
+    // vertical: fall onto floor from the platform, check never embedded
+    sim.reset();loadTestLevel();
+    sim.input={left:false,right:true,run:false,jump:false};
+    let emb=false;
+    for(let i=0;i<600;i++){sim.step(1000/60);const o=sim.observe();
+      if(boxHitsSolid(o.x,o.y))emb=true;if(o.state!=='play')break;}
+    if(emb){ok=false;detail.push('embedded during fall');}
+    return {pass:ok,detail:detail.join('; ')||'clean sweep 16/16 + fall'};
+  },
+  streaming(){
+    let maxE=0,ok=true;
+    for(let lv=0;lv<3;lv++){
+      sim.reset();G.levelSet=LEVELS;loadLevel(lv,false);G.state='play';
+      const bot=this._competent();
+      for(let f=0;f<60*180;f++){sim.input=bot(sim.observe(),f);sim.step(1000/60);
+        const o=sim.observe();maxE=Math.max(maxE,o.ents);
+        if(o.state!=='play')break;}
+    }
+    // leak check: 5 resets, entity count identical at frame 60
+    let counts=[];
+    for(let i=0;i<5;i++){sim.reset();for(let f=0;f<60;f++)sim.step(1000/60);
+      counts.push(sim.observe().ents);}
+    const leak=!counts.every(c=>c===counts[0]);
+    if(maxE>24||leak)ok=false;
+    return {pass:ok,maxLive:maxE,resetCounts:counts.join(',')};
+  },
+  _competent(){ let hold=0,cool=0;
+    /* Bot v2 — the RUN_LOG has v1's autopsy: it burned its jump on a phantom
+       wall (sensor saw a head-height platform while airborne), then landed
+       10px from a taskmaster with jump STILL HELD, which suppressed the
+       re-jump (the INV-15 mechanism, faithfully). v2: sensors consulted only
+       when grounded, jump released before landing (hold 22 < airtime), a
+       3-frame release cooldown so re-press is a real edge, and a wider
+       enemy trigger (70px) so it never lands inside a kill radius. */
+    return (o,f)=>{
+      let jump=false;
+      if(hold>0){hold--;jump=true;}
+      else if(cool>0){cool--;}
+      else if(o.grounded&&(o.gapAhead<44||o.wallAhead<26||o.enemyAhead<70)){
+        hold=22;cool=3;jump=true;}
+      return {left:false,right:true,run:true,jump};};
+  },
+  winnable(){
+    const out={};let allWin=true;
+    for(let lv=0;lv<3;lv++){
+      sim.reset();G.levelSet=LEVELS;loadLevel(lv,false);G.state='play';
+      const bot=this._competent();let end='timeout';
+      for(let f=0;f<60*180;f++){sim.input=bot(sim.observe(),f);sim.step(1000/60);
+        const s=sim.observe().state;
+        if(s==='clear'||s==='victory'){end='WIN';break;}
+        if(s==='dying'||s==='over'){end='died';break;}}
+      out['level'+(lv+1)]=end;if(end!=='WIN')allWin=false;
+    }
+    // losability: seeded random firstTimer dies in 1-1
+    sim.reset(99);const r=rng32(99);let act={left:false,right:true,run:false,jump:false};
+    let died=false;
+    for(let f=0;f<60*130;f++){
+      if(f%8===0){const p=r();act={left:p<0.2,right:p>=0.3,run:r()<0.2,jump:r()<0.3};}
+      sim.input=act;sim.step(1000/60);
+      const s=sim.observe();
+      if(s.state==='dying'||s.state==='over'||s.lives<3){died=true;break;}
+      if(s.state==='clear'){break;}}
+    out.firstTimerDies=died;if(!died)allWin=false;
+    return {pass:allWin,...out};
+  },
+  scoring(){
+    sim.reset();G.levelSet=LEVELS;loadLevel(0,false);G.state='play';
+    const bot=this._competent();
+    for(let f=0;f<60*180;f++){sim.input=bot(sim.observe(),f);sim.step(1000/60);
+      const s=sim.observe().state;if(s!=='play')break;}
+    const a=G.audit,sum=a.manna+a.stompT+a.stompS+a.clear+a.timeBonus;
+    const scoreAtAudit=G.score, okSum=sum===scoreAtAudit;
+    // spoil timing: walk until the first manna streams in, stop, watch it rot
+    sim.reset();G.levelSet=LEVELS;loadLevel(0,false);G.state='play';
+    sim.input={left:false,right:true,run:false,jump:false};
+    let first=null;
+    for(let f=0;f<600&&!first;f++){sim.step(1000/60);
+      first=G.ents.find(e=>e.t==='manna'&&e.alive);}
+    let spoilOk=false;
+    if(first){sim.input={left:false,right:false,run:false,jump:false};
+      const born=first.born;
+      while(G.frame-born<599)sim.step(1000/60);
+      const at599=first.alive;
+      sim.step(1000/60);
+      const at600=first.alive;
+      spoilOk=at599&&!at600;}
+    return {pass:okSum&&spoilOk,auditSum:sum,score:scoreAtAudit,spoilExact:spoilOk};
+  },
+  frameCost(){
+    sim.reset();G.levelSet=LEVELS;loadLevel(0,false);G.state='play';
+    const bot=this._competent();
+    const t0=performance.now();
+    for(let f=0;f<1000;f++){sim.input=bot(sim.observe(),f);sim.step(1000/60);render();}
+    const ms=(performance.now()-t0)/1000;
+    return {pass:ms<=4,avgMs:+ms.toFixed(3)};
+  }
+};
+/* ====================== main loop ========================================= */
+let acc=0,lastT=performance.now();
+function frameLoop(now){
+  requestAnimationFrame(frameLoop);
+  const dt=Math.min(100,now-lastT);lastT=now;
+  if(!G.paused&&!G.simMode){
+    acc+=dt;
+    while(acc>=1000/60){acc-=1000/60;
+      if(G.state==='play'||G.state==='dying'||G.state==='clear')stepCore(liveInput());
+      else G.frame++;}
+  }
+  if(!G.simMode)render();
+}
+requestAnimationFrame(frameLoop);
+/* ====================== test hook (INV-6) ================================= */
+window.__deliverance={
+  get state(){return G.state;},
+  get score(){return G.score;},
+  game:G, sim, HiScore, LETTERS, startEntryOrTitle, Feedback, tests,
+  newGame, PHYS,
+  debug:{ents:()=>G.ents.map(e=>({t:e.t,x:e.x,y:e.y,age:G.frame-e.born,alive:e.alive}))}
+};
+</script>
+</body>
+</html>
