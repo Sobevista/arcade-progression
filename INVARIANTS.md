@@ -147,6 +147,39 @@ parameter.**
 
 ---
 
+## From rung 3 — BREAKOUT (2026-07-18)
+
+### INV-12 — A precomputed step vector is stale the moment a collision changes velocity
+INV-1 says substep your projectiles. Rung 3 shows that **substepping is necessary but not
+sufficient.** The step vector was computed once, before the loop:
+
+```js
+const sx = b.vx * dt / steps, sy = b.vy * dt / steps;   // WRONG
+for (...) { b.x += sx; b.y += sy; /* bounce may reverse b.vx / b.vy here */ }
+```
+
+When a bounce reversed velocity mid-frame, the remaining substeps kept travelling the
+**original** direction — the ball ploughing onward through geometry it had just bounced
+off. Correct form recomputes from current velocity inside the loop:
+
+```js
+const h = dt / steps;
+for (...) { const sx = b.vx * h, sy = b.vy * h; ... }
+```
+
+**The invariant:** any value derived from mutable state and cached outside the loop that
+mutates it is a bug waiting for the right frame. Substepping exists precisely so state
+can change mid-frame — so nothing about the step may be decided before the step.
+
+**Honesty note on how this was found, because it matters:** I spotted this while
+misdiagnosing something else. The symptom I was chasing (rows scoring 5/11/17 instead of
+3/5/7) turned out to be **my test spawning the ball inside a neighbouring brick** — the
+game was correct. The stale-vector bug was real and worth fixing, but it was *not* the
+cause of what I was looking at. Finding a genuine bug while wrong about the evidence is
+not vindication; it is a coincidence that feels like skill.
+
+---
+
 ## Ledger
 
 | # | Invariant | Rung | Cost to find |
@@ -162,6 +195,7 @@ parameter.**
 | 9 | Green suite ≠ right criteria | Invaders | **5 real issues found by 5 min of play after 8/8 PASS** |
 | 10 | "Authentic" needs a source, not recall | Invaders | 2 wrong mechanics shipped from memory |
 | 11 | Reset functions are named per event, never per scope | Invaders | **the game's core tension silently deleted by one boolean** |
+| 12 | A cached step vector is stale the moment a collision changes velocity | Breakout | ball ploughed through geometry it had already bounced off |
 
 ---
 

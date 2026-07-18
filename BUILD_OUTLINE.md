@@ -90,8 +90,34 @@ roadblocks already earned and solved.
   Generalised as A-1/A-2: constraints generate identity, and removing a constraint
   silently removes whatever it was accidentally providing.
 
-  **NEXT ACTION: rung 3 = Breakout (1976).** Step 1 is archaeology, not code — the open
-  questions are already listed in `ARCHAEOLOGY.md` (was it discrete TTL with no CPU at
-  all? what did Wozniak's chip-count constraint remove? was paddle-angle control designed
-  or emergent? were the speed-up and paddle-shrink authored or another side effect?).
-  Galaga becomes rung 4.
+- **2026-07-18 — Rung 3 (Breakout) built the new way: archaeology first, then code.**
+  Dig answered every open question: **no CPU at all** (discrete TTL, Woz ~42–45 chips,
+  Atari shipped ~100 with indistinguishable gameplay), cellophane colour again, and —
+  the finding that reframes rung 2 — **Breakout's difficulty curve was deliberately
+  authored two years before Space Invaders got one by accident.** Later ≠ more evolved.
+
+  Built with substepped collision applied **on sight** from INV-1 rather than retrofitted;
+  the numbers demanded it (3 px ball, 6 px bricks, 11.3 px stride at top speed on a
+  clamped frame) and a full-stride sweep found **zero tunnelling**. The rung-2 law paid
+  for itself on rung 3 before a bug was filed.
+
+  All criteria [VERIFIED] in-browser: contact-point angle control exact (−0.0855 / 0 /
+  +0.0855), row values 1/3/5/7 with exactly one brick per hit, **all four curve triggers
+  firing correctly**, paddle halving once on breakthrough, 3 balls to game over, level
+  advance resetting the curve, no entity leak, 61 fps, zero page console messages.
+
+  **One new law: INV-12** — a cached step vector is stale the moment a collision changes
+  velocity. Substepping is necessary but not sufficient. Found while *misdiagnosing*
+  something else (the symptom was my own test spawning the ball inside a neighbouring
+  brick), and recorded that way, because finding a real bug while wrong about the
+  evidence is a coincidence, not skill.
+
+  **Scoreboard: 1 real bug from my tests, 4 false alarms.** Identical ratio to rung 2.
+  Stated plainly in the run log: my tests are less reliable than my code, and INV-3
+  (suspect the test first) is the dominant failure mode of this whole approach.
+
+  **NEXT ACTION: Daniel playtests rung 3** — per INV-9 it is not verified until a human
+  plays it. One open call waiting for him in `UX_DECISIONS.md`: the TI palette has no
+  true orange, so the orange band reads as salmon next to red and may be costing the
+  player the 1/3/5/7 risk gradient. Accept, or move orange to `darkYellow`.
+  Rung 4 = Galaga (1981), archaeology first.

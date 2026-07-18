@@ -106,6 +106,31 @@ round breaks the tension rhythm between waves. Logged against rung 3, not this b
 
 ---
 
+## Rung 3 — Breakout — decisions and one open call
+
+| # | Decision | Chose | Reasoning | Re-pick trigger |
+|---|---|---|---|---|
+| UX-13 | Difficulty curve | The exact 1976 rules — 4 hits, 12 hits, orange, red | It was *authored*, and reproducing an authored curve is the point of the rung | If playtest says the jumps feel arbitrary rather than escalating |
+| UX-14 | Paddle angle | Continuous contact-point mapping, ±60° | Sources confirm the mechanic but **not** the original's segment count. Continuous is honest; a fabricated zone count would be fake fidelity | If a source turns up documenting discrete zones |
+| UX-15 | Curve made visible | Speed pips, bottom right | The authored curve is this rung's whole lesson; hiding it wastes it | If it reads as clutter |
+| UX-16 | Scope discipline | **No mechanic that wasn't in the 1976 circuit** | Their chip count enforced restraint; our marginal cost is zero, so it must be a written rule (ARCHAEOLOGY A-5) | Never, without an explicit ledger entry |
+
+### OPEN — Daniel's call: orange band legibility
+
+The TI-99/4A palette has **no true orange**. The orange band currently uses `lightRed`,
+which renders as salmon and sits visually close to the red band above it. The 1/3/5/7
+scoring is meant to be a *visible* risk gradient — if red and orange read as the same
+colour, the player loses that information.
+
+- **Accept it** — series palette fidelity holds; the constraint is real and documented.
+- **Move orange to `darkYellow`** — olive-gold, clearly distinct from both red above and
+  the yellow band below. Costs a little colour accuracy, buys back the gradient.
+
+Recorded rather than silently changed, because it is a genuine tradeoff between two
+things we said we cared about.
+
+---
+
 ## Open UX debts found during the build
 
 Named, not silently carried:

@@ -1,0 +1,521 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>BREAKOUT — rung 3</title>
+
+<style>
+  html,body {
+    margin:0; height:100%; background:#000; color:#CCCCCC;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; overflow:hidden; touch-action:none; user-select:none;
+  }
+  canvas { image-rendering:pixelated; display:block; }
+  #pad, #pad2 { display:none; gap:10px; }
+  #pad button { width:104px; height:56px; font:inherit; font-size:20px;
+    background:#111; color:#CCC; border:2px solid #333; border-radius:8px; }
+  #pad2 button { width:88px; height:34px; font:inherit; font-size:12px;
+    background:#0a0a0a; color:#888; border:2px solid #262626; border-radius:8px; }
+  #pad button:active, #pad2 button:active { background:#222; }
+  body.touch #pad, body.touch #pad2 { display:flex; }
+  #hint { font-size:12px; color:#555; letter-spacing:1px; }
+  body.touch #hint { display:none; }
+</style>
+
+<canvas id="screen"></canvas>
+<div id="pad">
+  <button id="bL" aria-label="left">&#9664;</button>
+  <button id="bF" aria-label="launch">LAUNCH</button>
+  <button id="bR" aria-label="right">&#9654;</button>
+</div>
+<div id="pad2">
+  <button id="bP">PAUSE</button>
+  <button id="bT">TITLE</button>
+  <button id="bM">SOUND</button>
+</div>
+<div id="hint">&larr; &rarr; MOVE &nbsp;&middot;&nbsp; SPACE LAUNCH &nbsp;&middot;&nbsp; P PAUSE &nbsp;&middot;&nbsp; M SOUND &nbsp;&middot;&nbsp; ESC TITLE</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   BREAKOUT — rung 3 (Atari, May 1976)
+   Single file, vanilla JS, Canvas 2D, zero dependencies, no build step.
+
+   The original had NO CPU — pure discrete TTL logic, ~100 chips in production.
+   Every rule below was a circuit, which is why there are so few of them.
+   Self-imposed constraint for this rung: no mechanic that wasn't in the 1976
+   game. Our marginal cost for a new rule is zero, which is exactly why it has
+   to be a written rule. See ARCHAEOLOGY.md (A-5).
+   ========================================================================= */
+
+/* ---- TI-99/4A palette (TMS9918A) -------------------------------------
+   Series constraint, held across every rung. It has NO true orange, so the
+   1976 orange band is approximated. Recorded as an accepted cost, not hidden. */
+const TI = {
+  black:'#000000', mediumGreen:'#21C842', lightGreen:'#5EDC78',
+  darkBlue:'#5455ED', lightBlue:'#7D76FC', darkRed:'#D4524D',
+  cyan:'#42EBF5',    mediumRed:'#FC5554',  lightRed:'#FF7978',
+  darkYellow:'#D4C154', lightYellow:'#E6CE80', darkGreen:'#21B03B',
+  magenta:'#C95BBA', gray:'#CCCCCC', white:'#FFFFFF'
+};
+
+const W = 224, H = 256;
+const cv = document.getElementById('screen');
+const cx = cv.getContext('2d', { alpha:false });
+
+let scale = 1;
+function fit() {
+  const availW = window.innerWidth  - 16;
+  const availH = window.innerHeight - (document.body.classList.contains('touch') ? 130 : 60);
+  scale = Math.max(1, Math.floor(Math.min(availW / W, availH / H)));
+  cv.width = W; cv.height = H;
+  cv.style.width = (W*scale)+'px'; cv.style.height = (H*scale)+'px';
+  cx.imageSmoothingEnabled = false;
+}
+if (matchMedia('(hover: none)').matches) document.body.classList.add('touch');
+addEventListener('resize', fit);
+fit();
+
+/* ---- Sound: synthesised, zero assets ---------------------------------- */
+const Sound = (() => {
+  let ac = null, muted = false;
+  const ctx = () => ac || (ac = new (window.AudioContext || window.webkitAudioContext)());
+  function tone({ freq, to=null, dur=0.08, type='square', vol=0.10 }) {
+    if (muted || !ac) return;
+    const c = ac, t0 = c.currentTime;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (to !== null) o.frequency.linearRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(c.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  return {
+    unlock() { const c = ctx(); if (c.state === 'suspended') c.resume(); },
+    toggle() { muted = !muted; return muted; },
+    get muted() { return muted; },
+    wall()   { tone({ freq: 220, dur: 0.05 }); },
+    paddle() { tone({ freq: 330, dur: 0.06 }); },
+    // higher rows ping higher — the value gradient made audible
+    brick(row) { tone({ freq: 440 + (7 - row) * 70, dur: 0.06 }); },
+    lose()   { tone({ freq: 300, to: 60, dur: 0.4, type:'sawtooth', vol: 0.11 }); },
+    speed()  { tone({ freq: 880, to: 1200, dur: 0.12, vol: 0.07 }); },
+    clear()  { [523,659,784,1047].forEach((f,i) =>
+                 setTimeout(() => tone({ freq:f, dur:0.12, vol:0.09 }), i*90)); }
+  };
+})();
+
+/* ---- 5x7 font --------------------------------------------------------- */
+const GLYPHS = {
+ '0':'11111 10001 10001 10001 10001 10001 11111','1':'00100 01100 00100 00100 00100 00100 01110',
+ '2':'11111 00001 00001 11111 10000 10000 11111','3':'11111 00001 00001 11111 00001 00001 11111',
+ '4':'10001 10001 10001 11111 00001 00001 00001','5':'11111 10000 10000 11111 00001 00001 11111',
+ '6':'11111 10000 10000 11111 10001 10001 11111','7':'11111 00001 00010 00100 01000 01000 01000',
+ '8':'11111 10001 10001 11111 10001 10001 11111','9':'11111 10001 10001 11111 00001 00001 11111',
+ 'A':'01110 10001 10001 11111 10001 10001 10001','B':'11110 10001 10001 11110 10001 10001 11110',
+ 'C':'01111 10000 10000 10000 10000 10000 01111','D':'11110 10001 10001 10001 10001 10001 11110',
+ 'E':'11111 10000 10000 11110 10000 10000 11111','F':'11111 10000 10000 11110 10000 10000 10000',
+ 'G':'01111 10000 10000 10111 10001 10001 01111','H':'10001 10001 10001 11111 10001 10001 10001',
+ 'I':'11111 00100 00100 00100 00100 00100 11111','J':'00011 00001 00001 00001 00001 10001 01110',
+ 'K':'10001 10010 10100 11000 10100 10010 10001','L':'10000 10000 10000 10000 10000 10000 11111',
+ 'M':'10001 11011 10101 10101 10001 10001 10001','N':'10001 11001 10101 10011 10001 10001 10001',
+ 'O':'01110 10001 10001 10001 10001 10001 01110','P':'11110 10001 10001 11110 10000 10000 10000',
+ 'Q':'01110 10001 10001 10001 10101 10010 01101','R':'11110 10001 10001 11110 10100 10010 10001',
+ 'S':'01111 10000 10000 01110 00001 00001 11110','T':'11111 00100 00100 00100 00100 00100 00100',
+ 'U':'10001 10001 10001 10001 10001 10001 01110','V':'10001 10001 10001 10001 10001 01010 00100',
+ 'W':'10001 10001 10001 10101 10101 11011 10001','X':'10001 01010 00100 00100 00100 01010 10001',
+ 'Y':'10001 01010 00100 00100 00100 00100 00100','Z':'11111 00001 00010 00100 01000 10000 11111',
+ ' ':'00000 00000 00000 00000 00000 00000 00000','-':'00000 00000 00000 11111 00000 00000 00000',
+ ':':'00000 00100 00100 00000 00100 00100 00000','.':'00000 00000 00000 00000 00000 00000 00100',
+ '/':'00001 00010 00010 00100 01000 01000 10000','!':'00100 00100 00100 00100 00100 00000 00100'
+};
+function text(str, x, y, color) {
+  cx.fillStyle = color; let px = x;
+  for (const ch of str.toUpperCase()) {
+    const g = GLYPHS[ch] || GLYPHS[' '];
+    g.split(' ').forEach((row, r) => {
+      for (let c = 0; c < 5; c++) if (row[c] === '1') cx.fillRect(px+c, y+r, 1, 1);
+    });
+    px += 6;
+  }
+}
+const textW = s => s.length * 6 - 1;
+const center = (s, y, color) => text(s, ((W - textW(s))/2)|0, y, color);
+
+/* ---- Playfield geometry ----------------------------------------------
+   14 bricks across a 210px play area = exactly 15px each. Integer maths only;
+   fractional brick widths are how pixel art turns to mush.                */
+const WALL      = 7;                 // left/right wall thickness
+const PLAY_L    = WALL, PLAY_R = W - WALL;
+const CEIL      = 20;                // top wall (below the HUD)
+const COLS      = 14, ROWS = 8;
+const BRICK_W   = 15, BRICK_H = 6;
+const BRICK_TOP = 56;
+const PADDLE_Y  = H - 22;
+const PADDLE_FULL = 24, PADDLE_H = 3;
+const BALL      = 3;
+
+/* Row colours and values, top row first. Two rows per colour (1976).
+   The TI palette has no true orange — lightRed is the nearest available. */
+const ROW_DEF = [
+  { col: TI.mediumRed,   pts: 7, name:'red'    },
+  { col: TI.mediumRed,   pts: 7, name:'red'    },
+  { col: TI.lightRed,    pts: 5, name:'orange' },
+  { col: TI.lightRed,    pts: 5, name:'orange' },
+  { col: TI.mediumGreen, pts: 3, name:'green'  },
+  { col: TI.mediumGreen, pts: 3, name:'green'  },
+  { col: TI.lightYellow, pts: 1, name:'yellow' },
+  { col: TI.lightYellow, pts: 1, name:'yellow' }
+];
+
+/* ---- Speed table (1976 authored curve) -------------------------------
+   Speeds up after 4 hits, after 12 hits, and on first touching the orange
+   and red rows. Four discrete steps, deliberately designed — two years
+   BEFORE Space Invaders got its famous curve by accident. ARCHAEOLOGY A-8. */
+const SPEED = [0.115, 0.140, 0.165, 0.195, 0.225];
+
+const game = {
+  state: 'title',            // title | serve | play | dying | over | cleared
+  paused: false,
+  score: 0, high: loadHigh(), balls: 3, level: 1,
+  bricks: [], paddleW: PADDLE_FULL, paddleX: 0,
+  ball: null, hits: 0, speedStep: 0,
+  hitOrange: false, hitRed: false, brokeThrough: false,
+  msgTimer: 0, msg: '', flash: 0
+};
+
+function loadHigh()  { try { return +(localStorage.getItem('breakout.high') || 0); }
+                       catch (e) { return 0; } }
+function saveHigh(v) { try { localStorage.setItem('breakout.high', String(v)); }
+                       catch (e) {} }
+
+/* ---- INV-11: one function per lifecycle event, no boolean flags ------- */
+function makeBricks() {
+  const out = [];
+  const left = PLAY_L + ((PLAY_R - PLAY_L) - COLS * BRICK_W) / 2;
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      out.push({ x: left + c*BRICK_W, y: BRICK_TOP + r*BRICK_H, row: r, alive: true });
+  return out;
+}
+function newGame() {                       // brand new game
+  game.score = 0; game.balls = 3; game.level = 1;
+  game.paused = false;
+  newLevel();
+  game.state = 'serve';
+}
+function newLevel() {                      // fresh wall, curve resets (1976)
+  game.bricks = makeBricks();
+  game.paddleW = PADDLE_FULL;
+  game.hits = 0; game.speedStep = 0;
+  game.hitOrange = false; game.hitRed = false; game.brokeThrough = false;
+  newBall();
+}
+function newBall() {                       // lost a ball, wall persists
+  game.paddleX = (W - game.paddleW) / 2;
+  game.ball = null;
+  game.state = 'serve';
+}
+function launch() {
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  game.ball = { x: game.paddleX + game.paddleW/2, y: PADDLE_Y - 6,
+                vx: dir * SPEED[game.speedStep] * 0.6,
+                vy: -SPEED[game.speedStep] };
+  game.state = 'play';
+}
+
+/* ---- Input ------------------------------------------------------------ */
+const keys = Object.create(null);
+addEventListener('keydown', e => {
+  if ([' ','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+  keys[e.key] = true; Sound.unlock();
+  if (e.key === 'p' || e.key === 'P') { if (game.state === 'play') game.paused = !game.paused; }
+  if (e.key === 'm' || e.key === 'M') Sound.toggle();
+  if (e.key === 'Escape') toTitle();
+});
+addEventListener('keyup', e => { keys[e.key] = false; });
+
+function toTitle() {
+  if (game.state === 'title') return;
+  game.paused = false;
+  if (game.score > game.high) { game.high = game.score; saveHigh(game.high); }
+  game.state = 'title';
+}
+
+const touch = { left:false, right:false, fire:false };
+function bindPad(id, prop) {
+  const el = document.getElementById(id);
+  const on  = e => { e.preventDefault(); Sound.unlock(); touch[prop] = true; };
+  const off = e => { e.preventDefault(); touch[prop] = false; };
+  el.addEventListener('touchstart', on, {passive:false});
+  el.addEventListener('touchend', off, {passive:false});
+  el.addEventListener('touchcancel', off, {passive:false});
+  el.addEventListener('mousedown', on); el.addEventListener('mouseup', off);
+  el.addEventListener('mouseleave', off);
+}
+bindPad('bL','left'); bindPad('bR','right'); bindPad('bF','fire');
+function bindTap(id, fn) {
+  const el = document.getElementById(id);
+  const h = e => { e.preventDefault(); Sound.unlock(); fn(); };
+  el.addEventListener('touchstart', h, {passive:false});
+  el.addEventListener('click', h);
+}
+bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
+bindTap('bT', () => toTitle());
+bindTap('bM', () => Sound.toggle());
+
+const held = {
+  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left,
+  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right,
+  fire:  () => keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] || touch.fire
+};
+
+/* ---- Speed curve ------------------------------------------------------ */
+function bumpSpeed(reason) {
+  if (game.speedStep >= SPEED.length - 1) return;
+  game.speedStep++;
+  const b = game.ball;
+  if (b) {                               // retarget to the new speed, keep heading
+    const mag = Math.hypot(b.vx, b.vy) || 1;
+    const s = SPEED[game.speedStep];
+    b.vx = b.vx / mag * s; b.vy = b.vy / mag * s;
+  }
+  game.msg = reason; game.msgTimer = 900;
+  Sound.speed();
+}
+
+/* ---- INV-1: substepped collision, in from the first line --------------
+   The ball is 3px and bricks are 6px tall. At a clamped 50ms frame the ball
+   travels ~11px — clean through a brick with a point test. This rung is
+   where INV-1 pays for itself before a single bug is filed.              */
+const SUB_PX = 1.5;
+
+function brickAt(px, py) {
+  for (const b of game.bricks) {
+    if (!b.alive) continue;
+    if (px >= b.x && px < b.x + BRICK_W && py >= b.y && py < b.y + BRICK_H) return b;
+  }
+  return null;
+}
+
+function smashBrick(b) {
+  b.alive = false;
+  game.score += ROW_DEF[b.row].pts;
+  Sound.brick(b.row);
+  const name = ROW_DEF[b.row].name;
+  if (name === 'orange' && !game.hitOrange) { game.hitOrange = true; bumpSpeed('ORANGE ROW'); }
+  if (name === 'red'    && !game.hitRed)    { game.hitRed    = true; bumpSpeed('RED ROW'); }
+}
+
+function stepBall(dt) {
+  const b = game.ball;
+  const dist = Math.hypot(b.vx, b.vy) * dt;
+  const steps = Math.max(1, Math.ceil(dist / SUB_PX));
+  const h = dt / steps;                    // time per substep
+
+  for (let s = 0; s < steps; s++) {
+    /* Recompute the step vector from CURRENT velocity every substep.
+       Computing sx/sy once before the loop is a stale-state bug: a bounce
+       mid-frame reverses velocity, but the remaining substeps would keep
+       travelling the ORIGINAL direction — ploughing the ball up through
+       several bricks in a single frame. Measured before the fix: a row worth
+       3 points scored 5, a row worth 7 scored 17. See INVARIANTS INV-12. */
+    const sx = b.vx * h, sy = b.vy * h;
+    // --- horizontal, then test
+    b.x += sx;
+    if (b.x - BALL/2 <= PLAY_L) { b.x = PLAY_L + BALL/2; b.vx = Math.abs(b.vx); Sound.wall(); }
+    if (b.x + BALL/2 >= PLAY_R) { b.x = PLAY_R - BALL/2; b.vx = -Math.abs(b.vx); Sound.wall(); }
+    let hit = brickAt(b.x, b.y);
+    if (hit) { b.vx = -b.vx; b.x -= sx; smashBrick(hit); registerHit(); }
+
+    // --- vertical, then test
+    b.y += sy;
+    if (b.y - BALL/2 <= CEIL) {
+      b.y = CEIL + BALL/2; b.vy = Math.abs(b.vy); Sound.wall();
+      // 1976: paddle halves once the ball breaks through to the top wall
+      if (!game.brokeThrough) {
+        game.brokeThrough = true;
+        game.paddleW = PADDLE_FULL / 2;
+        game.paddleX = Math.min(game.paddleX, PLAY_R - game.paddleW);
+        game.msg = 'PADDLE HALVED'; game.msgTimer = 1200;
+      }
+    }
+    hit = brickAt(b.x, b.y);
+    if (hit) { b.vy = -b.vy; b.y -= sy; smashBrick(hit); registerHit(); }
+
+    // --- paddle: contact point sets the angle. THE mechanic of this rung.
+    if (b.vy > 0 &&
+        b.y + BALL/2 >= PADDLE_Y && b.y - BALL/2 <= PADDLE_Y + PADDLE_H &&
+        b.x >= game.paddleX && b.x <= game.paddleX + game.paddleW) {
+      const t = ((b.x - game.paddleX) / game.paddleW) * 2 - 1;   // -1 .. +1
+      const angle = t * (Math.PI / 3);                            // up to 60 deg
+      const spd = SPEED[game.speedStep];
+      b.vx =  Math.sin(angle) * spd;
+      b.vy = -Math.cos(angle) * spd;
+      b.y  = PADDLE_Y - BALL/2 - 0.01;
+      Sound.paddle();
+      registerHit();
+    }
+
+    // --- lost
+    if (b.y - BALL/2 > H) { loseBall(); return; }
+  }
+}
+
+function registerHit() {
+  game.hits++;
+  if (game.hits === 4)  bumpSpeed('4 HITS');
+  if (game.hits === 12) bumpSpeed('12 HITS');
+}
+
+function loseBall() {
+  game.ball = null;
+  game.balls--;
+  Sound.lose();
+  if (game.balls <= 0) {
+    game.state = 'over';
+    if (game.score > game.high) { game.high = game.score; saveHigh(game.high); }
+  } else {
+    newBall();
+  }
+}
+
+/* ---- Update ----------------------------------------------------------- */
+let firePrev = false;
+function update(dt) {
+  if (game.msgTimer > 0) game.msgTimer -= dt;
+  if (game.flash > 0) game.flash -= dt;
+
+  if (game.state === 'title') {
+    if (held.fire() && !firePrev) newGame();
+    firePrev = held.fire(); return;
+  }
+  if (game.state === 'over') {
+    if (held.fire() && !firePrev) game.state = 'title';
+    firePrev = held.fire(); return;
+  }
+  if (game.state === 'cleared') {
+    if (game.msgTimer <= 0) { game.level++; newLevel(); }
+    return;
+  }
+  if (game.paused) { firePrev = held.fire(); return; }
+
+  // paddle
+  const spd = 0.13;
+  if (held.left())  game.paddleX -= spd * dt;
+  if (held.right()) game.paddleX += spd * dt;
+  game.paddleX = Math.max(PLAY_L, Math.min(PLAY_R - game.paddleW, game.paddleX));
+
+  if (game.state === 'serve') {
+    const f = held.fire();
+    if (f && !firePrev) launch();
+    firePrev = f;
+    return;
+  }
+
+  firePrev = held.fire();
+  if (game.ball) stepBall(dt);
+
+  if (game.bricks.every(b => !b.alive)) {
+    game.state = 'cleared';
+    game.msg = 'WALL CLEARED'; game.msgTimer = 1600;
+    game.flash = 400; game.ball = null;
+    Sound.clear();
+  }
+}
+
+/* ---- Render ----------------------------------------------------------- */
+function render() {
+  cx.fillStyle = TI.black; cx.fillRect(0, 0, W, H);
+
+  // HUD
+  text('SCORE', 6, 3, TI.gray);
+  text(String(game.score).padStart(4,'0'), 6, 11, TI.white);
+  const hs = 'HI ' + String(game.high).padStart(4,'0');
+  text(hs, W - textW(hs) - 6, 3, TI.gray);
+  const lv = 'WALL ' + game.level;
+  text(lv, W - textW(lv) - 6, 11, TI.darkYellow);
+  if (Sound.muted) center('SOUND OFF', 3, '#555');
+
+  if (game.state === 'title') {
+    center('BREAKOUT', 92, TI.lightRed);
+    center('TI-99/4A PALETTE', 108, '#444');
+    if (game.score > 0) center('LAST SCORE ' + game.score, 126, '#555');
+    center(matchMedia('(hover: none)').matches ? 'TAP LAUNCH TO START' : 'PRESS SPACE TO START',
+           146, ((performance.now()/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
+    let yy = 176;
+    for (let r = 0; r < ROWS; r += 2) {
+      cx.fillStyle = ROW_DEF[r].col;
+      cx.fillRect(70, yy, 84, 5);
+      text(String(ROW_DEF[r].pts), 160, yy - 1, ROW_DEF[r].col);
+      yy += 9;
+    }
+    return;
+  }
+
+  // walls
+  cx.fillStyle = game.flash > 0 ? TI.white : '#333';
+  cx.fillRect(0, CEIL - 2, W, 2);
+  cx.fillRect(0, CEIL - 2, WALL - 2, H - CEIL);
+  cx.fillRect(W - WALL + 2, CEIL - 2, WALL - 2, H - CEIL);
+
+  // bricks — 1px inset so the grid reads without needing real gaps
+  for (const b of game.bricks) {
+    if (!b.alive) continue;
+    cx.fillStyle = ROW_DEF[b.row].col;
+    cx.fillRect(b.x, b.y, BRICK_W - 1, BRICK_H - 1);
+  }
+
+  // paddle
+  cx.fillStyle = TI.cyan;
+  cx.fillRect(game.paddleX|0, PADDLE_Y, game.paddleW|0, PADDLE_H);
+
+  // ball
+  if (game.ball) {
+    cx.fillStyle = TI.white;
+    cx.fillRect((game.ball.x - BALL/2)|0, (game.ball.y - BALL/2)|0, BALL, BALL);
+  }
+
+  // balls remaining
+  cx.fillStyle = TI.cyan;
+  for (let i = 0; i < game.balls; i++) cx.fillRect(8 + i*8, H - 8, 3, 3);
+
+  // speed pips — the authored curve, made visible
+  for (let i = 0; i < SPEED.length; i++) {
+    cx.fillStyle = i <= game.speedStep ? TI.lightRed : '#2a2a2a';
+    cx.fillRect(W - 8 - (SPEED.length - i)*6, H - 8, 4, 3);
+  }
+
+  if (game.state === 'serve') center('PRESS SPACE TO SERVE', 150, TI.darkYellow);
+  if (game.msgTimer > 0)      center(game.msg, 138, TI.lightYellow);
+  if (game.paused)            center('PAUSED', 120, TI.lightYellow);
+  if (game.state === 'over') {
+    center('GAME OVER', 112, TI.mediumRed);
+    if (game.score >= game.high && game.score > 0) center('NEW HIGH SCORE', 126, TI.lightYellow);
+    center('FIRE TO CONTINUE', 142, TI.gray);
+  }
+}
+
+/* ---- Loop ------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(50, now - last);   // clamp: see INV-2
+  last = now;
+  update(dt); render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---- Test hook (INV-6) ------------------------------------------------ */
+window.__breakout = {
+  get state()  { return game.state; },
+  get score()  { return game.score; },
+  get alive()  { return game.bricks.filter(b => b.alive).length; },
+  get speed()  { return SPEED[game.speedStep]; },
+  get step()   { return game.speedStep; },
+  get paddleW(){ return game.paddleW; },
+  get entities(){ return game.bricks.length + (game.ball ? 1 : 0); },
+  game, newGame, newLevel, newBall, launch, toTitle, Sound,
+  SPEED, ROW_DEF, geom: { W, H, WALL, PLAY_L, PLAY_R, CEIL, COLS, ROWS,
+                          BRICK_W, BRICK_H, BRICK_TOP, PADDLE_Y, PADDLE_FULL, BALL }
+};
+</script>

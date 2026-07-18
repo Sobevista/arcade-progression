@@ -128,33 +128,91 @@ have the bottleneck, watching the tension fail to appear, and working out why.
 
 ---
 
-## Rung 3 — Breakout (Atari, 1976) — questions to answer BEFORE building
-
-*This section is deliberately unanswered. Filling it in is step 1 of rung 3, and no code
-gets written until it is.*
+## Rung 3 — Breakout (Atari, May 1976)
 
 Breakout sits between rungs 1 and 2 not just chronologically but **causally** — it is
-Pong's direct descendant, and Nishikado has cited it as his inspiration for Space
-Invaders. Building it completes the actual chain rather than skipping a link.
+Pong's direct descendant, and Nishikado cited it as his inspiration for Space Invaders.
+Building it completes the actual chain rather than skipping a link.
 
-Open questions, all to be sourced:
+### The machine
 
-1. **Was there a CPU at all?** Breakout is widely described as built from discrete TTL
-   logic with no microprocessor. If true, that is a profoundly different machine from the
-   8080 — and it means the "accidental tempo ramp" mechanism could not have happened the
-   same way. What did Breakout's difficulty curve consist of, and was *it* deliberate?
-2. **The Wozniak chip-count story.** Woz is said to have prototyped it with a famously
-   low part count. What did that constraint remove from the design?
-3. **How was paddle-angle control actually implemented?** Reflection based on contact
-   point is the mechanic that makes Breakout a skill game rather than a reflex game.
-   Was that intentional or emergent?
-4. **The documented speed-up and paddle-shrink rules** — were they authored, or another
-   side effect?
-5. **Colour** — same cellophane trick, or real?
+| | |
+|---|---|
+| CPU | **None.** Discrete transistor-transistor logic. There is no processor and no program — the game *is* the circuit |
+| Prototype | Steve Wozniak, ~42–45 TTL chips (sources vary), engineered for minimum part count |
+| Production | Atari could not manufacture Woz's design; shipped their own at **~100 TTL chips** |
+| Display | 19" **black-and-white** monitor, portrait orientation |
+| Colour | **None.** Coloured cellophane strips over the glass again — yellow, green, orange, red bands bottom to top |
+| Design | Nolan Bushnell and Steve Bristow |
 
-**What Breakout should teach us that neither neighbour does:** reflection angle as a
-*control surface*, a destructible tile grid (the direct ancestor of both Invaders'
-formation and its bunkers), and difficulty as an authored curve rather than an accident.
+### The authored rules — and why this matters
+
+Unlike Space Invaders, **Breakout's difficulty curve was deliberately designed**:
+
+- Ball speeds up **after 4 hits**, again **after 12 hits**, and again on reaching the
+  **orange** and **red** rows
+- The paddle **halves in width** once the ball breaks through to the top wall
+- 8 brick rows, two per colour: yellow **1 pt**, green **3**, orange **5**, red **7**
+- 3 balls per game
+
+Every one of those is an explicit rule. And here is the finding: **the game with the
+authored difficulty curve came two years BEFORE the one with the accidental curve.**
+Rung 2's tempo ramp wasn't a step forward in design thinking — it was a hardware
+accident that happened to land on something Breakout had already done on purpose.
+
+### Finding 1 — when a rule costs a physical chip, feature creep is impossible
+
+There is no CPU. Every rule had to be expressible as *wiring*. "Speed up after four
+hits" means a counter circuit; "paddle halves" means gating a width signal. A designer
+who wants a new mechanic is asking someone to add hardware to every cabinet ever built.
+
+That is why Breakout's rule set is so small and so countable — 4 hits, 12 hits, two row
+colours, one paddle-shrink. It is not simplicity as taste. **It is simplicity as
+physics.**
+
+Our marginal cost of a new rule is zero. So the discipline the hardware used to impose
+has to be imposed by us, deliberately, or it doesn't exist at all. This is A-2 again in
+a new costume: remove the constraint, lose what it was providing.
+
+### Finding 2 — elegance that can't be manufactured isn't elegance
+
+Wozniak's design is legendary precisely because of its part count. Atari's production
+process couldn't reproduce it, so they shipped a version with more than twice the chips.
+Woz himself reportedly could not tell the difference in gameplay.
+
+**The player experiences behaviour, not implementation.** A brilliant reduction that the
+factory cannot build is worth less than a clumsy one that ships — and the clever version
+scores zero points with the person holding the paddle. That is "build for repair, not
+forever" arriving from the opposite direction.
+
+### Finding 3 — the cellophane trick is a pattern, not a one-off
+
+Breakout (1976) and Space Invaders (1978) both faked colour with coloured plastic taped
+over a monochrome CRT. Two different companies, two countries, two years apart, same
+hack. A-3 is upgraded from an anecdote to an **era-defining constraint**: for most of the
+1970s, colour was a physical layer, not a software property.
+
+### Open / unverified
+
+- **Paddle segmentation.** Sources confirm the mechanic — the ball rebounds at different
+  angles depending where it strikes the paddle — but **not** how many discrete zones the
+  original used, or whether deflection was stepped or continuous. **[ASSUMED]** We will
+  implement continuous contact-point mapping and flag it here rather than invent a
+  segment count and present it as fidelity.
+
+### Our Suffering Ledger for rung 3
+
+| Constraint | Verdict | Reasoning |
+|---|---|---|
+| Authored difficulty curve (4 hits / 12 hits / orange / red) | **KEEP exactly** | This is the rung's central lesson — a designed curve, two years before the famous accidental one |
+| Paddle halves on breakthrough | **KEEP** | Punishes the exact success it rewards. Elegant, and free to implement |
+| 8 rows × 14 bricks, 1/3/5/7 scoring | **KEEP** | Score as a risk gradient — the valuable bricks are the hard ones |
+| 3 balls | **KEEP** | Authentic, and it makes the speed thresholds matter |
+| Contact-point angle control | **KEEP** — it's the reason for this rung | Turns a reflex game into a skill game. The primitive neither neighbour teaches |
+| **No new mechanics beyond the 1976 rule set** | **KEEP — self-imposed** | Deliberately adopting the discipline the TTL chip count used to enforce. If it wasn't in the circuit, it isn't in our build |
+| Building it in discrete logic / a gate simulator | **SKIP** | Teaches TTL, not game design. Wrong axis of suffering |
+| Cellophane colour simulation | **SKIP** | We have real colour; the lesson is recorded, not re-suffered |
+| **TI-99/4A palette has no true orange** | **INVERTED — accepted cost** | Holding the series palette means we *cannot* reproduce Breakout's actual colour bands. Substituting the nearest available. A constraint we chose, now constraining us — exactly how the originals felt |
 
 ---
 
@@ -168,3 +226,7 @@ formation and its bunkers), and difficulty as an authored curve rather than an a
 | A-2 | Removing a constraint silently removes what it was providing; you must replace it deliberately | 2 | flat 60 fps kills the difficulty curve |
 | A-3 | Aesthetics can be a physical hack, not a software decision | 2 | cellophane over the CRT |
 | A-4 | The screen shape a genre inherits may just be how someone bolted a monitor in | 2 | 90° rotated raster |
+| A-5 | When a rule costs a physical chip, feature creep is impossible — zero marginal cost means the discipline must now be self-imposed | 3 | Breakout has no CPU; every rule is wiring |
+| A-6 | Elegance the factory can't build is worth less than a clumsy version that ships; the player experiences behaviour, not implementation | 3 | Woz's ~42 chips → Atari's ~100, gameplay indistinguishable |
+| A-7 | Colour was a *physical layer* for most of the 1970s, not a software property — confirmed across two companies, two countries, two years | 2, 3 | cellophane on both |
+| A-8 | The deliberate solution can predate the famous accidental one — later ≠ more evolved | 3 | Breakout authored its difficulty curve in 1976; Invaders got one by accident in 1978 |
