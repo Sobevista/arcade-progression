@@ -815,12 +815,26 @@ function render() {
 
     center(matchMedia('(hover: none)').matches ? 'TAP FIRE TO START' : 'PRESS SPACE TO START',
            182, ((performance.now()/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
-    draw(SQUID[(performance.now()/400|0)%2], 62,  206, TI.cyan);
-    text('30', 82, 207, TI.cyan);
-    draw(CRAB [(performance.now()/400|0)%2], 104, 206, TI.lightGreen);
-    text('20', 124, 207, TI.lightGreen);
-    draw(OCTO [(performance.now()/400|0)%2], 146, 206, TI.magenta);
-    text('10', 166, 207, TI.magenta);
+    /* Scoring legend, CENTRED BY COMPUTATION rather than by hand-placed magic
+       numbers. The previous version used literal x positions (62/104/146) and
+       sat 8px right of centre — every other element on this screen goes through
+       center(), so the one hand-placed row was the one that looked wrong.
+       Daniel spotted it: "everything is centered except the aliens". */
+    const frame = (performance.now()/400|0) % 2;
+    const legend = [
+      { spr: SQUID[frame], w: 8,  pts: '30', col: TI.cyan },
+      { spr: CRAB [frame], w: 11, pts: '20', col: TI.lightGreen },
+      { spr: OCTO [frame], w: 12, pts: '10', col: TI.magenta }
+    ];
+    const GAP_SPR = 4, GAP_ITEM = 12;
+    const itemW = it => it.w + GAP_SPR + textW(it.pts);
+    const totalW = legend.reduce((n, it) => n + itemW(it), 0) + GAP_ITEM * (legend.length - 1);
+    let lx = ((W - totalW) / 2) | 0;
+    for (const it of legend) {
+      draw(it.spr, lx, 206, it.col);
+      text(it.pts, lx + it.w + GAP_SPR, 207, it.col);
+      lx += itemW(it) + GAP_ITEM;
+    }
     return;
   }
 
