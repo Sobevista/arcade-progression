@@ -1,0 +1,6 @@
+# One line-ending everywhere. Normalize all text to LF in the repo and on
+# checkout, so Windows desktop, phone (connector), and the Linux sandbox stop
+# disagreeing about line endings. This CRLF mismatch churned 500+ files and
+# helped diverge the harness across devices on 2026-07-17. Binary files are
+# auto-detected and left untouched.
+* text=auto eol=lf
