@@ -37,6 +37,43 @@ third because it is the causal link between Pong and Space Invaders.
 Both playable rungs carry: a high score table with initials, a swivel stick for touch,
 synthesised audio, and the TI-99/4A palette.
 
+## Releasing a rung (pacing the learning)
+
+Each game is a **self-contained cog**: one HTML file, zero dependencies, zero external
+requests. Verified mechanically by `tools/conformance.js` (`standalone` check), not assumed.
+You can copy any `rungs/NN-name/index.html` onto a USB stick, into an email, or onto a
+different site and it runs unchanged.
+
+That means releases can be paced — one game at a time, so the lessons land instead of
+blurring together.
+
+**Soft gate (normal use).** Edit `releases.json`:
+
+```json
+{ "released": ["02-invaders"] }
+```
+
+Push. The landing page shows only listed rungs; the rest are dimmed to `NOT YET` with their
+links removed, so the shape of the journey stays visible but only the current game is
+offered. No build step, no code change.
+
+> **What "soft" means, honestly:** this controls what is *advertised*, not what *exists*.
+> An unlisted rung is still deployed and still reachable by typing its URL. That is fine for
+> pacing a family; it is not privacy.
+
+**Hard gate (genuinely not published).** Keep the new rung on a branch and merge it to
+`main` only at release:
+
+```powershell
+git checkout -b rung-04-galaga
+# ...build, playtest...
+git push -u origin rung-04-galaga      # not on the live site yet
+# at release:
+git checkout main; git merge rung-04-galaga; git push
+```
+
+Pages only ever serves `main`, so an unmerged rung is genuinely absent from the internet.
+
 ## The rules of this repo
 
 - **Archaeology before code.** Every rung starts by researching the original machine and

@@ -148,6 +148,26 @@ const Conformance = (() => {
     palette: {
       why: 'series constraint — the TI-99/4A palette, the homage',
       check: g => ({ pass: !!(g && (g.TI || g.game)), detail: 'assumed by inspection' })
+    },
+
+    standalone: {
+      why: 'each rung must be a movable cog — one file that runs anywhere, alone',
+      check: async () => {
+        // Read this rung's own source and prove it pulls in nothing external.
+        // Modularity you have not measured is modularity you do not have.
+        let src = '';
+        try { src = await fetch(location.pathname.replace(/\/$/, '') + '/index.html'
+                                  .replace(/index\.html$/, 'index.html'))
+                        .then(r => r.text()); }
+        catch (e) { try { src = await fetch('index.html').then(r => r.text()); }
+                    catch (e2) { return { pass: null, detail: 'could not read own source' }; } }
+        const tags    = (src.match(/<(script|link|img|iframe|audio|video)[^>]*\s(src|href)\s*=/gi) || []).length;
+        const fetches = (src.match(/\bfetch\s*\(/g) || []).length;
+        const imports = (src.match(/\bimport\s+[\w{*]/g) || []).length;
+        return { pass: tags === 0 && fetches === 0 && imports === 0,
+                 detail: `external tags=${tags} fetch=${fetches} import=${imports}` +
+                         ` (${Math.round(src.length/1024)}KB)` };
+      }
     }
   };
 

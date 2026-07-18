@@ -51,6 +51,34 @@ roadblocks already earned and solved.
 - **Rung 1 (Pong) stays in `Pong_Tower-Repo`** and stays Daniel's to engineer by hand.
   It is not ported here.
 
+- **Each rung is a movable cog, and it is measured (added 2026-07-18).** One HTML file,
+  zero external requests — verified by the `standalone` conformance check, not assumed.
+  Release pacing is controlled by `releases.json` (soft gate: what is advertised) or by
+  keeping a rung on a branch until merge (hard gate: what exists). See README.
+
+## GOVERNANCE — how changes reach `main` here vs. on the mesh
+
+Verified 2026-07-18, because Daniel asked whether the merge-to-main requirement was being
+bypassed:
+
+| | `agent-mesh` | `arcade-progression` |
+|---|---|---|
+| Branch protection | **yes** — 1 approving review required | **none** (HTTP 404, unprotected) |
+| Required status check | **yes** — `test` | none (no CI) |
+| How change lands | branch → PR → CI green → Daniel merges | Daniel runs `git push` |
+| Who authored every commit | mixed (mesh + human) | **Daniel Slocum, all of them** |
+
+**The honest reading:** the human gate is intact — Claude has written no commit and pushed
+nothing here; every commit on this repo was run by Daniel at his terminal. What is *absent*
+compared to the mesh is the **mechanical** gate: no protection, no CI, no review step. So
+the guarantee is **self-enforced policy, not enforced mechanics** — the same distinction the
+harness already recorded as *"sight is not merge rights."*
+
+That is a deliberate fit for what this repo is (browser games with no test suite to gate on),
+not an oversight. It should be revisited the moment either becomes true:
+- a rung grows a test suite worth gating (then add CI + protection, per the mesh pattern), or
+- anything other than Daniel starts pushing here.
+
 ## OPEN
 
 - **Rung 3 target:** Breakout (1976) as a backfill vs. jumping straight to Galaga.

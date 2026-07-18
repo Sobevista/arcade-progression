@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "RELEASE CONTROL — which rungs are advertised on the landing page.",
+    "",
+    "Edit 'released' and push. No build step, no code change. The landing page",
+    "fetches this file at load and renders only what is listed, in this order.",
+    "",
+    "IMPORTANT AND HONEST: this is a SOFT release gate. It controls what is",
+    "ADVERTISED, not what exists. An unlisted rung is still deployed and still",
+    "reachable by anyone who types its URL directly. That is fine for pacing a",
+    "family's learning; it is NOT privacy or access control.",
+    "",
+    "For a HARD gate — the files genuinely not on the internet — keep the rung on",
+    "a branch and merge it to main only at release. See README, 'Releasing a rung'."
+  ],
+
+  "released": [
+    "02-invaders"
+  ],
+
+  "pacing_note": "Invaders only for now. Breakout is built, verified and waiting — release it when Invaders has been played out. One game at a time means the lessons land instead of blurring together."
+}

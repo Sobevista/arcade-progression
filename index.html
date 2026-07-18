@@ -60,7 +60,7 @@
   there deliberately.</p>
 
   <h2>The rungs</h2>
-  <ul class="rungs">
+  <ul class="rungs" id="rungs">
     <li>
       <span class="n">01</span>
       <span class="name"><a href="https://github.com/Sobevista/Pong_Tower-Repo">Pong</a></span>
@@ -124,4 +124,39 @@
     theory second.
   </footer>
 </div>
+
+<script>
+/* RELEASE GATING — the rung list above is the full roadmap; releases.json says
+   which of them are actually offered right now. Editing that one file paces the
+   learning without touching any game.
+
+   Rungs not in the release list are dimmed and their link removed, so the shape
+   of the journey stays visible (that's motivating) while only the current game
+   is playable from here. Soft gate — see releases.json for what that means. */
+(async () => {
+  const list = document.getElementById('rungs');
+  if (!list) return;
+  let released = null;
+  try {
+    const r = await fetch('releases.json?t=' + Date.now());
+    if (r.ok) released = (await r.json()).released;
+  } catch (e) { /* offline or opened from disk: fail OPEN, show everything */ }
+  if (!Array.isArray(released)) return;
+
+  for (const li of list.querySelectorAll('li')) {
+    const a = li.querySelector('.name a[href^="rungs/"]');
+    if (!a) continue;                                   // external / not-built rows
+    const slug = (a.getAttribute('href').match(/rungs\/([^/]+)/) || [])[1];
+    if (released.includes(slug)) continue;              // released: leave alone
+
+    li.classList.remove('live');
+    const tag = li.querySelector('.tag');
+    if (tag) { tag.className = 'tag soon'; tag.textContent = 'NOT YET'; }
+    const span = document.createElement('span');        // strip the link
+    span.textContent = a.textContent;
+    a.replaceWith(span);
+    li.style.opacity = '0.55';
+  }
+})();
+</script>
 </html>
