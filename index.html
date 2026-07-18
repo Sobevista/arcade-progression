@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arcade Progression</title>
+<style>
+  :root { --bg:#0a0a0a; --fg:#ccc; --dim:#666; --green:#21C842; --cyan:#42EBF5;
+          --magenta:#C95BBA; --yellow:#E6CE80; --line:#222; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); padding:2rem 1.25rem 4rem;
+         font-family:ui-monospace,"Cascadia Mono",Consolas,monospace; line-height:1.6; }
+  .wrap { max-width:760px; margin:0 auto; }
+  h1 { color:var(--green); font-size:clamp(1.6rem,6vw,2.4rem); letter-spacing:.12em;
+       margin:0 0 .25rem; }
+  .sub { color:var(--dim); margin:0 0 2rem; font-size:.9rem; }
+  h2 { color:var(--cyan); font-size:1rem; letter-spacing:.1em; text-transform:uppercase;
+       margin:2.5rem 0 .75rem; border-bottom:1px solid var(--line); padding-bottom:.4rem; }
+  a { color:var(--yellow); }
+  ul.rungs { list-style:none; padding:0; margin:0; }
+  ul.rungs li { border:1px solid var(--line); border-radius:8px; padding:.85rem 1rem;
+                margin-bottom:.6rem; display:flex; gap:1rem; align-items:baseline;
+                flex-wrap:wrap; }
+  ul.rungs li.live { border-color:#2c4b32; }
+  .n { color:var(--dim); min-width:2.2rem; }
+  .name { font-weight:700; }
+  .name a { text-decoration:none; }
+  .name a:hover { text-decoration:underline; }
+  .yr { color:var(--dim); }
+  .adds { color:var(--dim); font-size:.85rem; flex-basis:100%; }
+  .tag { margin-left:auto; font-size:.72rem; letter-spacing:.08em; padding:.15rem .5rem;
+         border-radius:4px; white-space:nowrap; }
+  .tag.play { background:#14301a; color:var(--green); }
+  .tag.soon { background:#1a1a1a; color:var(--dim); }
+  .tag.out  { background:#1a1526; color:var(--magenta); }
+  p.note { color:var(--dim); font-size:.88rem; }
+  code { background:#151515; padding:.1rem .35rem; border-radius:3px; }
+  footer { margin-top:3rem; border-top:1px solid var(--line); padding-top:1rem;
+           color:var(--dim); font-size:.82rem; }
+</style>
+
+<div class="wrap">
+  <h1>ARCADE PROGRESSION</h1>
+  <p class="sub">A walk through arcade history, one game at a time, built from scratch.</p>
+
+  <p>Every rung is playable in a browser and teaches a primitive the last one didn't
+  have. The real product isn't the games — it's the
+  <a href="INVARIANTS.md">invariant list</a>: laws earned by things going wrong, so the
+  next build starts with its roadblocks already solved.</p>
+
+  <h2>The rungs</h2>
+  <ul class="rungs">
+    <li>
+      <span class="n">01</span>
+      <span class="name"><a href="https://github.com/Sobevista/Pong_Tower-Repo">Pong</a></span>
+      <span class="yr">1972</span>
+      <span class="tag out">SEPARATE REPO</span>
+      <span class="adds">paddle and ball physics, scoring — Python/pygame</span>
+    </li>
+    <li class="live">
+      <span class="n">02</span>
+      <span class="name"><a href="rungs/02-invaders/">Invaders</a></span>
+      <span class="yr">1978</span>
+      <span class="tag play">PLAY</span>
+      <span class="adds">formation, tempo ramp, destructible terrain — TI-99/4A palette</span>
+    </li>
+    <li>
+      <span class="n">03</span>
+      <span class="name">Breakout</span>
+      <span class="yr">1976</span>
+      <span class="tag soon">BACKFILL</span>
+      <span class="adds">reflection angles, tile grid — the literal link between 01 and 02</span>
+    </li>
+    <li>
+      <span class="n">04</span>
+      <span class="name">Galaga</span>
+      <span class="yr">1981</span>
+      <span class="tag soon">QUEUED</span>
+      <span class="adds">entry-flight paths, dive AI, capture and rescue, bonus stages</span>
+    </li>
+    <li>
+      <span class="n">05</span>
+      <span class="name">TI-99/4A titles</span>
+      <span class="yr">1979&ndash;84</span>
+      <span class="tag soon">QUEUED</span>
+      <span class="adds">the machine this whole thing is an homage to</span>
+    </li>
+    <li>
+      <span class="n">06</span>
+      <span class="name">NES</span>
+      <span class="yr">1985+</span>
+      <span class="tag soon">QUEUED</span>
+      <span class="adds">tile maps, scrolling, item state</span>
+    </li>
+  </ul>
+
+  <h2>How these are built</h2>
+  <p>One HTML file per game. Vanilla JavaScript, Canvas 2D, zero dependencies, no build
+  step. You can download any of them and double-click it — no server, no install, works
+  offline. <em>Build for repair, not forever.</em></p>
+  <p class="note">Pass criteria are locked before a rung is built, then verified by
+  running the thing rather than asserting it. Then a human plays it, because on rung 2
+  the automated suite passed everything and a five-minute playtest found six real
+  defects it structurally could not catch.</p>
+
+  <h2>The failures stay in</h2>
+  <p>Each rung keeps a <code>RUN_LOG.md</code> with the wrong turns, false alarms and
+  dead ends left in on purpose. That's not modesty — the mistakes are the teaching
+  material, and a log tidied afterwards is a press release.</p>
+
+  <footer>
+    Homage to a father who taught &ldquo;guess and click&rdquo; — hands on first,
+    theory second.
+  </footer>
+</div>
+</html>
