@@ -151,6 +151,46 @@ const Conformance = (() => {
     }
   };
 
+  /* ---- DOCS CONFORMANCE ------------------------------------------------
+     Rung status lives in TWO user-facing places: README.md (what GitHub shows
+     on the repo front page) and index.html (what GitHub Pages shows visitors).
+     They drifted immediately — Breakout shipped, the landing page said PLAY,
+     and the README still said "backfill — not built" for a full day. Daniel
+     found it by looking at the repo.
+
+     Same disease as INV-18: a fact with two homes and no check. This is the
+     check. It is separate from the per-rung contracts above because it is about
+     the repo, not about a game.                                              */
+  async function checkDocs(base) {
+    base = base || (location.origin + location.pathname.replace(/rungs\/.*$/, ''));
+    const out = { base, rungs: {}, problems: [] };
+    let readme = '', landing = '';
+    try { readme  = await fetch(base + 'README.md?t=' + Date.now()).then(r => r.text()); }
+    catch (e) { out.problems.push('could not fetch README.md'); }
+    try { landing = await fetch(base + 'index.html?t=' + Date.now()).then(r => r.text()); }
+    catch (e) { out.problems.push('could not fetch index.html'); }
+
+    // A rung is PLAYABLE if its folder is linked as playable in each document.
+    for (const slug of ['02-invaders', '03-breakout', '04-galaga', '05-ti994a', '06-nes']) {
+      const inReadme  = readme.includes('rungs/' + slug + '/');
+      const inLanding = landing.includes('rungs/' + slug + '/');
+      // "not built" / "queued" markers next to the slug's game name
+      const readmeSaysPlay  = inReadme  && /PLAY/i.test(
+        (readme.split('\n').find(l => l.includes('rungs/' + slug + '/')) || ''));
+      const landingSaysPlay = inLanding && /tag play/i.test(
+        landing.slice(Math.max(0, landing.indexOf('rungs/' + slug + '/') - 400),
+                      landing.indexOf('rungs/' + slug + '/') + 400));
+      if (!inReadme && !inLanding) continue;                 // not built anywhere, fine
+      out.rungs[slug] = { readme: readmeSaysPlay, landing: landingSaysPlay };
+      if (readmeSaysPlay !== landingSaysPlay) {
+        out.problems.push(slug + ': README says ' + (readmeSaysPlay ? 'PLAY' : 'not built') +
+                          ' but the landing page says ' + (landingSaysPlay ? 'PLAY' : 'not built'));
+      }
+    }
+    out.consistent = out.problems.length === 0;
+    return out;
+  }
+
   async function check(name) {
     const g = window['__' + name];
     const out = { rung: name, when: new Date().toISOString().slice(0, 16), results: {} };
@@ -179,7 +219,7 @@ const Conformance = (() => {
     return lines.join('\n');
   }
 
-  return { CONTRACTS, check, report };
+  return { CONTRACTS, check, report, checkDocs };
 })();
 
 if (typeof window !== 'undefined') window.Conformance = Conformance;

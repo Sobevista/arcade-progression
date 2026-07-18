@@ -35,11 +35,57 @@ const PlaytestSim = (() => {
        delayMs         reaction lag before acting on what they see
        errorPx         positional sloppiness, re-rolled periodically
        aims            do they use contact point deliberately, or just return  */
+  /* CALIBRATED 2026-07-18 against real family scores. The original three tiers
+     were validated at the bottom and fantasy above it:
+
+       bot `beginner` median 5 (range 4-7)  ==  the 6-year-old's 4,4,5,7   ✅
+       bot `intermediate` 826               ==  nobody we have ever measured
+       bot `adept` 896 perfect, 0 balls lost==  not a player, an upper bound
+
+     Every actual human fell in the GAP between them. Renamed and filled in.
+     Anchors are real observed scores, not guesses:
+
+       firstTimer  ~5      6-year-old, four attempts
+       novice      ~20-40  9-year-old (12,13,37) and Mum (21)
+       competent   ~320    Daniel, "tense the whole time"
+       expert      ~800    the old `intermediate` - beyond anyone measured
+       ceiling     896     the old `adept` - perfect play, not a person
+
+     LIMIT WORTH STATING: every tier is frozen at one skill level forever. The
+     9-year-old went 12 -> 13 -> 37 across three tries, nearly 3x. No tier here
+     models learning, which means the sim cannot see the single strongest signal
+     in the real data - that the game teaches itself.                        */
+  /* `predictChance` was added after the first calibration run. Without it the
+     tiers had a CLIFF: predictBounces 0 (pure chasing) scored ~5, and
+     predictBounces 1 (always predicting) scored ~350. Nothing in between could
+     be expressed, yet that gap is exactly where real novices live — the
+     9-year-old and Mum scored 13-37.
+
+     The fix is also the more honest model. A novice does not "always predict"
+     or "never predict". They read the ball SOMETIMES and chase it the rest of
+     the time, and the fraction is what improves as they learn. Skill isn't only
+     accuracy; it's consistency of applying the skill you have. */
   const TIERS = {
-    beginner:     { predictBounces: 0, delayMs: 260, errorPx: 16, aims: false },
-    intermediate: { predictBounces: 1, delayMs: 130, errorPx: 8,  aims: false },
-    adept:        { predictBounces: 3, delayMs: 55,  errorPx: 3,  aims: true  }
+    firstTimer: { predictBounces: 0, predictChance: 0.00, delayMs: 260, errorPx: 16,
+                  aims: false, anchor: '6yo: 4,4,5,7' },
+    novice:     { predictBounces: 1, predictChance: 0.45, delayMs: 225, errorPx: 14,
+                  aims: false, anchor: '9yo: 12,13,37 / Mum: 21' },
+    competent:  { predictBounces: 1, predictChance: 0.85, delayMs: 175, errorPx: 11,
+                  aims: false, anchor: 'Daniel: 319' },
+    expert:     { predictBounces: 1, predictChance: 1.00, delayMs: 130, errorPx: 8,
+                  aims: false, anchor: 'beyond anyone measured' },
+    ceiling:    { predictBounces: 3, predictChance: 1.00, delayMs: 55,  errorPx: 3,
+                  aims: true,  anchor: 'perfect play, not a person' }
   };
+
+  /* Observed human results, the thing tiers are tuned to match. n is small but
+     each row is worth more than any number of bot runs. */
+  const HUMAN_ANCHORS = [
+    { who: '6-year-old',  scores: [4, 4, 5, 7],   tier: 'firstTimer' },
+    { who: '9-year-old',  scores: [12, 13, 37],   tier: 'novice' },
+    { who: 'Mum',         scores: [21],           tier: 'novice' },
+    { who: 'Daniel',      scores: [319],          tier: 'competent' }
+  ];
 
   /* ---- Research benchmarks we score against --------------------------
      Sourced in ARCHAEOLOGY.md (A-11) and UX_DECISIONS.md (UX-22).        */
@@ -92,6 +138,10 @@ const PlaytestSim = (() => {
     B.newGame();
 
     let t = 0, sinceRoll = 0, jitter = 0;
+    // re-rolled with the jitter: whether this player is currently "reading" the
+    // ball or just chasing it. Held for a beat rather than flickering per tick,
+    // because a real player commits to a read for a moment.
+    let readingNow = Math.random() < (tier.predictChance || 0);
     const delayBuf = [];
     const wallClearedAt = [];
     let lastLevel = 1, ballsLostAt = [];
@@ -106,7 +156,10 @@ const PlaytestSim = (() => {
       IN.fire = (o.state === 'serve' || o.state === 'title');
 
       // --- perceive (with lag): where will the ball arrive?
-      let target = predictLandingX(o.ball, g, tier.predictBounces);
+      //     A tier only gets its prediction when it is actually "reading" this
+      //     beat; otherwise it falls back to chasing the ball's current x.
+      const bounces = readingNow ? tier.predictBounces : 0;
+      let target = predictLandingX(o.ball, g, bounces);
       if (target === null) target = o.paddleX + o.paddleW / 2;
 
       // adept aims: bias contact point toward whichever side still has bricks,
@@ -126,7 +179,11 @@ const PlaytestSim = (() => {
       // --- sloppiness, re-rolled a few times a second (not per tick, or it
       //     averages out to perfect play and the tier stops meaning anything)
       sinceRoll += DT;
-      if (sinceRoll > 200) { jitter = (Math.random() * 2 - 1) * tier.errorPx; sinceRoll = 0; }
+      if (sinceRoll > 200) {
+        jitter = (Math.random() * 2 - 1) * tier.errorPx;
+        readingNow = Math.random() < (tier.predictChance || 0);
+        sinceRoll = 0;
+      }
 
       const aimAt = seen + jitter;
       const centre = o.paddleX + o.paddleW / 2;
@@ -210,15 +267,32 @@ const PlaytestSim = (() => {
         : 'above casual top quartile (7m)';
       out.tiers[t] = r;
     }
-    // the shape that matters: does difficulty actually scale with skill?
-    const b = out.tiers.beginner, i = out.tiers.intermediate, a = out.tiers.adept;
+    // does difficulty actually scale monotonically with skill?
+    const order = Object.keys(TIERS);
+    const meds = order.map(t => out.tiers[t].scoreMedian);
     out.skillGradient = {
-      scoresAscend: b.scoreMedian <= i.scoreMedian && i.scoreMedian <= a.scoreMedian,
-      clearRatesAscend: b.clearedWall1Pct <= i.clearedWall1Pct
-                     && i.clearedWall1Pct <= a.clearedWall1Pct,
-      beginnerNotHopeless: b.scoreMedian > 0,
-      adeptNotTrivial: a.wonPct < 100
+      order,
+      medians: meds,
+      scoresAscend: meds.every((v, i) => i === 0 || v >= meds[i - 1]),
+      clearRatesAscend: order.every((t, i) => i === 0 ||
+        out.tiers[t].clearedWall1Pct >= out.tiers[order[i - 1]].clearedWall1Pct),
+      firstTimerNotHopeless: out.tiers.firstTimer.scoreMedian > 0,
+      ceilingNotTrivialForOthers: out.tiers.competent.wonPct < 100
     };
+
+    /* CALIBRATION: does each tier actually land near the human it is named for?
+       This is the check that makes the labels mean something instead of being
+       asserted. A tier whose median is nowhere near its anchor is mislabelled —
+       which is exactly what `intermediate` and `adept` turned out to be. */
+    out.calibration = HUMAN_ANCHORS.map(a => {
+      const t = out.tiers[a.tier];
+      const humanMed = median(a.scores);
+      const botMed = t ? t.scoreMedian : null;
+      const ratio = (botMed && humanMed) ? +(botMed / humanMed).toFixed(2) : null;
+      return { who: a.who, tier: a.tier, humanMedian: humanMed, botMedian: botMed,
+               ratio, withinFactorOf2: ratio !== null && ratio >= 0.5 && ratio <= 2 };
+    });
+    out.calibrated = out.calibration.every(c => c.withinFactorOf2);
     return out;
   }
 

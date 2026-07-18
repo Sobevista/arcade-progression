@@ -5,17 +5,52 @@ restricted to the same virtual controls (and therefore the same paddle speed) a 
 
 ---
 
-## Rung 3 — Breakout — 2026-07-18
+## Rung 3 — Breakout — CALIBRATED RUN, 2026-07-18 (40 trials/tier)
 
-| | Beginner | Intermediate | Adept |
-|---|---|---|---|
-| Cleared wall 1 | **0%** | 67% | 100% |
-| Won (both walls) | 0% | 40% | **100%** |
-| Median score | **5** | 826 | **896 (perfect)** |
-| Score range (p25–p75) | 4–7 | 443–896 | 896–896 |
-| Time to clear wall 1 | never | **311 s** | **309 s** |
-| Full game length | 16 s | 529 s | 603 s |
-| Balls lost | 3 | 3 | **0** |
+Five tiers, tuned against real observed human scores rather than asserted.
+
+| Tier | Anchor | Median | p25–p75 | Clears wall 1 | Wins |
+|---|---|---|---|---|---|
+| `firstTimer` | 6-year-old: 4,4,5,7 | **5** | 4–7 | 0% | 0% |
+| `novice` | 9-year-old: 12,13,37 / Mum: 21 | **13** | 11–21 | 0% | 0% |
+| `competent` | Daniel: 319 | **248** | 170–321 | 0% | 0% |
+| `expert` | beyond anyone measured | **882** | 771–896 | 88% | 40% |
+| `ceiling` | perfect play, not a person | **896** | 896 | 100% | 100% |
+
+**Calibration: PASSING — all four human anchors within a factor of 2.**
+
+| Human | Tier | Human median | Bot median | Ratio |
+|---|---|---|---|---|
+| 6-year-old | firstTimer | 4.5 | 5 | 1.11 ✅ |
+| 9-year-old | novice | 13 | 13 | 1.00 ✅ |
+| Mum | novice | 21 | 13 | 0.62 ✅ |
+| Daniel | competent | 319 | 248 | 0.78 ✅ |
+
+Monotonic across the ladder: **5 → 13 → 248 → 882 → 896.**
+
+### What calibration exposed: a skill cliff, and the missing parameter
+
+The first attempt at `novice` scored **352 against a human anchor of 13–21** — 20× too
+good. Not a tuning error. With only `predictBounces` available, the tiers had a **cliff**:
+0 bounces (pure chasing) scored ~5, 1 bounce (always predicting) scored ~350, and nothing
+in between could be expressed. **Every real novice lives inside that gap.**
+
+The fix was a new parameter, `predictChance` — how *often* the player reads the ball
+instead of chasing it. That is also the more honest model:
+
+> A novice does not "always predict" or "never predict." They read the ball **sometimes**
+> and chase it the rest of the time, and the fraction is what grows as they learn.
+> **Skill is not only accuracy; it is the consistency with which you apply the skill you
+> already have.**
+
+That insight came out of being forced to match real children's scores. It would not have
+come from tuning against intuition, because intuition was what produced the cliff.
+
+### Old, uncalibrated run — kept for the record
+
+Original three tiers: `beginner` 5 · `intermediate` 826 · `adept` 896-perfect-every-time.
+Validated at the bottom, fantasy above it, with every real human falling in the gap. See
+the calibration section below for how the anchors were collected.
 
 Whole sweep — 90 full games — runs in a few seconds of wall time, roughly 8,600× faster
 than real time.
@@ -123,6 +158,18 @@ What is wrong is everything above it:
 The three real anchors we now have (5 / ~25 / 319) are worth more than any number of bot
 runs, and they say the tier ladder had a hole in the middle exactly where every actual
 human lives.
+
+**STATUS: CALIBRATION DONE 2026-07-18** — tiers rebuilt and all four anchors now land
+within a factor of 2. See the top of this file for the passing run.
+
+### Remaining honest limits
+
+1. **n is tiny.** Mum has exactly one observation; four humans, ten games total. The urge
+   to keep tuning until every ratio reads 1.00 was resisted — fitting to n=1 produces a
+   model of one afternoon, not of players.
+2. **`expert` and `ceiling` are unanchored.** No measured human reaches them; they are
+   labelled upper bounds rather than players, which is the honest framing.
+3. **It still cannot measure fun.** Every finding that mattered came from a human playing.
 
 **Note the learning curve too:** the 9-year-old went 12 → 13 → **37** across three tries.
 Nearly 3× in three attempts. That is the strongest signal in the whole dataset that the

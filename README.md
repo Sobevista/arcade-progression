@@ -20,16 +20,22 @@ Follow `RESUME.md`.
 
 ## Play
 
-| Rung | Game | Year | Adds | Play |
-|---|---|---|---|---|
-| 1 | Pong | 1972 | paddle/ball physics, scoring | [Pong_Tower-Repo](https://github.com/Sobevista/Pong_Tower-Repo) (Python/pygame, separate repo) |
-| 2 | **Invaders** | 1978 | formation, tempo ramp, destructible terrain | [`rungs/02-invaders/`](rungs/02-invaders/) |
-| 3 | Breakout | 1976 | reflection angles, tile grid | *backfill — not built* |
-| 4 | Galaga | 1981 | entry-flight paths, dive AI, capture/rescue, bonus stages | *not built* |
-| 5 | TI-99/4A titles | 1979–84 | the machine this whole thing is an homage to | *not built* |
-| 6 | NES | 1985+ | tile maps, scrolling, item state | *not built* |
+**▶ Play them live: https://sobevista.github.io/arcade-progression/**
 
-Rungs are numbered by build order, not strictly by year — Breakout is a backfill.
+| Rung | Game | Year | Adds | Status |
+|---|---|---|---|---|
+| 1 | Pong | 1972 | paddle/ball physics, scoring | separate repo — [Pong_Tower-Repo](https://github.com/Sobevista/Pong_Tower-Repo) (Python/pygame) |
+| 2 | **Invaders** | 1978 | formation, tempo ramp, destructible terrain | ✅ **PLAY** — [`rungs/02-invaders/`](rungs/02-invaders/) · [live](https://sobevista.github.io/arcade-progression/rungs/02-invaders/) |
+| 3 | **Breakout** | 1976 | reflection angles, tile grid, an *authored* difficulty curve — and no CPU at all | ✅ **PLAY** — [`rungs/03-breakout/`](rungs/03-breakout/) · [live](https://sobevista.github.io/arcade-progression/rungs/03-breakout/) |
+| 4 | Galaga | 1981 | entry-flight paths, dive AI, capture/rescue, bonus stages | queued — next |
+| 5 | TI-99/4A titles | 1979–84 | the machine this whole thing is an homage to | queued |
+| 6 | NES | 1985+ | tile maps, scrolling, item state | queued |
+
+Rungs are numbered by build order, not strictly by year — Breakout is a backfill, built
+third because it is the causal link between Pong and Space Invaders.
+
+Both playable rungs carry: a high score table with initials, a swivel stick for touch,
+synthesised audio, and the TI-99/4A palette.
 
 ## The rules of this repo
 
