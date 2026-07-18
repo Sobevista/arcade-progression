@@ -2,6 +2,20 @@
 
 *Append-only. Wrong turns stay in.*
 
+- **2026-07-18 ~20:30 — FIRST HUMAN PLAYTEST (Daniel): completed the world first
+  sitting, score 14,790. First finding, minutes after handoff: "Level 3 had no
+  enemies."** Diagnosis confirmed and the honest part recorded: **the chariots are
+  structurally invisible to a competent player** — they spawn behind the camera at
+  1.9 px/f against a 2.5 px/f run, lose ground immediately, and get culled. The
+  verification sim SHOWED this (chariots=0 after a full corridor run) and I
+  rationalized it as "reward for speed" instead of flagging it. P7 proved the level
+  winnable; no sim measures "the chase feels empty" — INV-13/INV-9 doing exactly
+  what they always do. **Fix options on the table, held until Daniel's full report
+  (his call):** (1) the sea itself closes progressively behind you — thematically
+  the true antagonist; (2) chariots faster than run speed, shed at gaps they can't
+  jump; (3) both. More playtest laps in progress; further findings will be logged
+  TESTIMONY-style per the rung-6 precedent.
+
 - **2026-07-18 ~18:30 — Rung opened the doctrine's way.** Archaeology dug BEFORE this
   file existed (A-25..A-29 in `ARCHAEOLOGY.md`), theme + legal posture ruled (UX-34),
   title ruled by Daniel: **DELIVERANCE**. CRLF churn fixed repo-wide first

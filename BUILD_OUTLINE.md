@@ -588,3 +588,17 @@ not an oversight. It should be revisited the moment either becomes true:
   levels. Then: family playtest rungs 4+5+6+7, the stacked calls (T9 bar, feedback
   rollout, release gating — now four rungs waiting), and Phase 2 scoping (staff
   power-ups, more worlds, enemy variety) after the feel verdict lands.**
+
+- **2026-07-18 ~20:30 — First playtest lap ran the same sitting (feedback loop at
+  chat speed, second rung in a row).** Daniel finished the world first try
+  (14,790) and immediately caught what the machine verification could not:
+  **"Level 3 had no enemies"** — the pursuing chariots are slower than run speed
+  and spawn behind the camera, so a competent player never sees one. The sim had
+  displayed the symptom (chariots=0) and it was rationalized instead of flagged —
+  miss on the record in the RUN_LOG, with three fix options held for his full
+  report (favourite: the closing sea as the level's true antagonist). **Daniel is
+  running more playtest laps; the build stays frozen until his report lands.**
+
+  **NEXT ACTION: Daniel's full playtest report → TESTIMONY-style fixes under
+  prove-the-fix, then his push. The stacked calls unchanged (T9, feedback
+  rollout, release gating for 3–7).**
