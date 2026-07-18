@@ -240,17 +240,51 @@ addEventListener('keydown', e => {
   if (e.key === 'p' || e.key === 'P') { if (game.state === 'play') game.paused = !game.paused; }
   if (e.key === 'm' || e.key === 'M') Sound.toggle();
   if (e.key === 'Escape') toTitle();                // in-game exit to title
+  // typing initials directly — the grown-up shortcut. Arrows are the arcade path.
+  if (game.state === 'entry' && game.entry) {
+    const up = e.key.toUpperCase();
+    if (up.length === 1 && LETTERS.includes(up)) {
+      game.entry.chars[game.entry.slot] = LETTERS.indexOf(up);
+      advanceEntry();
+    } else if (e.key === 'Backspace' && game.entry.slot > 0) {
+      game.entry.slot--;
+    }
+  }
 });
 addEventListener('keyup', e => { keys[e.key] = false; });
 
 function toTitle() {
   if (game.state === 'title') return;
   game.paused = false;
-  if (game.score > game.high) {                     // don't lose a high score on exit
-    game.high = game.score;
-    saveHigh(game.high);
-  }
+  game.entry = null;
   game.state = 'title';
+}
+
+/* Initials entry — arrows cycle, fire locks in. Same stick-and-one-button the
+   cabinet had, which is why it also works on touch. Modal state gets its OWN
+   bindings and starts with every button flagged HELD (INV-15). */
+const entryNav = {
+  left:  () => keys['ArrowLeft']  || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || touch.right || simInput.right,
+  ok:    () => keys[' '] || keys['Enter'] || touch.fire || simInput.fire
+};
+function startEntryOrTitle() {
+  if (HiScore.qualifies(game.score)) {
+    game.entry = { chars: [0,0,0], slot: 0, hold: 0, pl: true, pr: true, pf: true };
+    game.state = 'entry';
+  } else {
+    game.state = 'title';
+  }
+}
+function advanceEntry() {
+  const e = game.entry;
+  if (!e) return;
+  e.slot++;
+  if (e.slot > 2) {
+    game.lastRank = HiScore.add(e.chars.map(i => LETTERS[i]).join(''), game.score);
+    game.entry = null;
+    game.state = 'title';
+  }
 }
 
 const touch = { left:false, right:false, fire:false };
@@ -274,23 +308,74 @@ function bindTap(id, fn) {
   el.addEventListener('touchstart', h, {passive:false});
   el.addEventListener('click', h);
 }
-/* Tap the play area to fire. With the arrows pushed out to the tablet's edges
-   (Lucius's request), the centre FIRE button is the one thing a thumb resting
-   on an arrow can't reach — so the whole screen is a fire button too. */
-(() => {
-  const fire = e => { e.preventDefault(); Sound.unlock();
-    touch.fire = true; setTimeout(() => { touch.fire = false; }, 90); };
-  cv.addEventListener('touchstart', fire, { passive:false });
+/* ---- SWIVEL STICK (touch) ---------------------------------------------
+   Daniel's call 2026-07-18, after Lucius's reach complaint: give it the feel of
+   an actual cabinet stick rather than two discrete buttons.
+
+     LEFT half of the play area  = a virtual stick. Put a thumb down anywhere,
+                                   swivel left or right from that point. The
+                                   origin is wherever YOU touched, so there is
+                                   no "correct" place to put your hand — which
+                                   is the whole reason it fits small hands.
+     RIGHT half                  = fire.
+
+   Multi-touch by identifier, so steering and firing are genuinely simultaneous.
+   The button pad still works; this is an alternative, not a replacement. */
+const Stick = (() => {
+  const DEAD = 9;                       // px of slack before it registers
+  let stickId = null, originX = 0, curX = 0, fireId = null;
+  const state = { active:false, ox:0, dx:0 };
+
+  function apply() {
+    const dx = curX - originX;
+    state.dx = dx;
+    touch.left  = state.active && dx < -DEAD;
+    touch.right = state.active && dx >  DEAD;
+  }
+  function start(e) {
+    const r = cv.getBoundingClientRect();
+    for (const t of e.changedTouches) {
+      const leftHalf = (t.clientX - r.left) < r.width / 2;
+      if (leftHalf && stickId === null) {
+        stickId = t.identifier; originX = curX = t.clientX;
+        state.active = true; state.ox = t.clientX - r.left;
+      } else if (!leftHalf && fireId === null) {
+        fireId = t.identifier; touch.fire = true;
+      }
+    }
+    apply(); e.preventDefault(); Sound.unlock();
+  }
+  function move(e) {
+    for (const t of e.changedTouches) if (t.identifier === stickId) curX = t.clientX;
+    apply(); e.preventDefault();
+  }
+  function end(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = null; state.active = false;
+                                      touch.left = touch.right = false; }
+      if (t.identifier === fireId)  { fireId = null; touch.fire = false; }
+    }
+    apply();
+  }
+  cv.addEventListener('touchstart',  start, { passive:false });
+  cv.addEventListener('touchmove',   move,  { passive:false });
+  cv.addEventListener('touchend',    end,   { passive:false });
+  cv.addEventListener('touchcancel', end,   { passive:false });
+  return state;
 })();
 
 bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
 bindTap('bT', () => toTitle());
 bindTap('bM', () => Sound.toggle());
 
+/* Virtual input channel for the simulated-playtest harness. A bot drives THESE
+   and nothing else, so it is bound by the same movement speed a human has. */
+const simInput = { left:false, right:false, fire:false };
+
 const held = {
-  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left,
-  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right,
-  fire:  () => keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] || touch.fire
+  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right || simInput.right,
+  fire:  () => keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] || touch.fire || simInput.fire
 };
 
 /* ---- Bunkers: real destructible terrain, stored as a pixel grid -------
@@ -350,16 +435,54 @@ const INVADE_LINE = PLAYER_Y - 4;   // they reach this, you lose
    (file:// origins are treated inconsistently across browsers, and some block
    storage outright). Wrapped so the worst case is "high score doesn't persist"
    rather than "the game refuses to start."                                   */
-function loadHigh()  { try { return +(localStorage.getItem('invaders.high') || 0); }
-                       catch (e) { return 0; } }
-function saveHigh(v) { try { localStorage.setItem('invaders.high', String(v)); }
-                       catch (e) { /* running from disk without storage — fine */ } }
+/* ---- HIGH SCORE TABLE ------------------------------------------------
+   Implements the shared protocol — canonical copy in tools/hiscore.js.
+     storage key   arcade.<game>.scores
+     entry shape   { n:"ABC", s:319, d:"2026-07-18" }
+   Inlined per rung because the single-file rule is about distribution.
+
+   Ported to this rung 2026-07-18, later than it should have been. It shipped
+   on rung 3 first and this rung was left with a single stored high score —
+   documented as a TODO in tools/hiscore.js and then not acted on, because a
+   TODO in a file nobody re-reads is not a process. tools/conformance.js now
+   fails the build when a rung is missing a shared contract. */
+const HiScore = (() => {
+  const KEY = 'arcade.invaders.scores', MAX = 8;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+                       catch (e) { return []; } };
+  const store = l => { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} };
+  return {
+    list: load,
+    qualifies(score) {
+      if (score <= 0) return false;
+      const l = load();
+      return l.length < MAX || score > l[l.length - 1].s;
+    },
+    add(name, score) {
+      const l = load();
+      l.push({ n: name, s: score, d: new Date().toISOString().slice(0, 10) });
+      l.sort((a, b) => b.s - a.s);
+      const cut = l.slice(0, MAX);
+      store(cut);
+      return cut.findIndex(e => e.s === score && e.n === name) + 1;
+    },
+    clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  };
+})();
+
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';   // no space: space confirms
+
+/* HI is DERIVED from the table — one fact, one home. The legacy standalone key
+   is deleted so it can't drift back into existence. */
+function topScore() { const l = HiScore.list(); return l.length ? l[0].s : 0; }
+try { localStorage.removeItem('invaders.high'); } catch (e) {}
 
 const game = {
   state: 'title',      // title | play | dying | over
   paused: false,
   score: 0,
-  high: loadHigh(),
+  entry: null,                 // { chars, slot, hold, pl, pr, pf }
+  lastRank: 0,
   lives: 3,
   wave: 1,
   ship: null, bullet: null, bombs: [], invaders: [], bunkers: [],
@@ -497,10 +620,6 @@ function loseLife(overrun) {
 
 function gameOver() {
   game.state = 'over';
-  if (game.score > game.high) {
-    game.high = game.score;
-    saveHigh(game.high);
-  }
 }
 
 /* ---- Collision, substepped -------------------------------------------
@@ -553,8 +672,21 @@ function update(dt) {
     firePrev = held.fire();
     return;
   }
+  if (game.state === 'entry') {
+    const e = game.entry;
+    const L = entryNav.left(), Rr = entryNav.right(), OK = entryNav.ok();
+    const cyc = d => { e.chars[e.slot] = (e.chars[e.slot] + d + LETTERS.length) % LETTERS.length; };
+    e.hold -= dt;
+    if (L  && !e.pl) { cyc(-1); e.hold = 380; }
+    if (Rr && !e.pr) { cyc(+1); e.hold = 380; }
+    if ((L || Rr) && e.hold <= 0) { cyc(L ? -1 : +1); e.hold = 110; }
+    if (OK && !e.pf) advanceEntry();
+    e.pl = L; e.pr = Rr; e.pf = OK;
+    firePrev = OK;
+    return;
+  }
   if (game.state === 'over') {
-    if (held.fire() && !firePrev) game.state = 'title';
+    if (held.fire() && !firePrev) startEntryOrTitle();
     firePrev = held.fire();
     return;
   }
@@ -652,21 +784,61 @@ function render() {
   // HUD
   text('SCORE', 6, 4, TI.gray);
   text(String(game.score).padStart(5,'0'), 6, 12, TI.white);
-  const hs = 'HI ' + String(game.high).padStart(5,'0');
+  const hs = 'HI ' + String(topScore()).padStart(5,'0');
   text(hs, W - textW(hs) - 6, 4, TI.gray);
   const wv = 'WAVE ' + game.wave;
   text(wv, W - textW(wv) - 6, 12, TI.darkYellow);
   if (Sound.muted) center('SOUND OFF', 4, '#555');
 
   if (game.state === 'title') {
-    center('INVADERS', 96, TI.mediumGreen);
-    center('TI-99/4A PALETTE', 112, '#444');
-    if (game.score > 0) center('LAST SCORE ' + game.score, 130, '#555');
+    center('INVADERS', 38, TI.mediumGreen);
+    center('TI-99/4A PALETTE', 52, '#444');
+
+    const list = HiScore.list();
+    center('HIGH SCORES', 74, TI.cyan);
+    if (!list.length) {
+      center('NO SCORES YET', 94, '#555');
+      center('BE THE FIRST', 106, '#444');
+    } else {
+      let y = 90;
+      list.forEach((e, i) => {
+        const fresh = game.lastRank === i + 1;
+        const blink = fresh && ((performance.now()/300|0) % 2);
+        const col = blink ? TI.white : fresh ? TI.lightYellow : TI.gray;
+        text(String(i+1).padStart(2,' '), 48, y, '#555');
+        text(e.n, 72, y, col);
+        text(String(e.s).padStart(5,'0'), 108, y, col);
+        text(e.d.slice(5), 152, y, '#3d3d3d');
+        y += 10;
+      });
+    }
+
     center(matchMedia('(hover: none)').matches ? 'TAP FIRE TO START' : 'PRESS SPACE TO START',
-           148, ((performance.now()/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
-    draw(SQUID[(performance.now()/400|0)%2], 60,  180, TI.cyan);
-    draw(CRAB [(performance.now()/400|0)%2], 100, 180, TI.lightGreen);
-    draw(OCTO [(performance.now()/400|0)%2], 145, 180, TI.magenta);
+           182, ((performance.now()/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
+    draw(SQUID[(performance.now()/400|0)%2], 62,  206, TI.cyan);
+    text('30', 82, 207, TI.cyan);
+    draw(CRAB [(performance.now()/400|0)%2], 104, 206, TI.lightGreen);
+    text('20', 124, 207, TI.lightGreen);
+    draw(OCTO [(performance.now()/400|0)%2], 146, 206, TI.magenta);
+    text('10', 166, 207, TI.magenta);
+    return;
+  }
+
+  if (game.state === 'entry') {
+    center('NEW HIGH SCORE', 74, TI.lightYellow);
+    center(String(game.score), 94, TI.white);
+    center('ENTER YOUR INITIALS', 116, '#666');
+    const e = game.entry;
+    for (let i = 0; i < 3; i++) {
+      const x = (W/2|0) - 21 + i*16;
+      const active = i === e.slot;
+      const blink = active && ((performance.now()/300|0) % 2);
+      text(LETTERS[e.chars[i]], x, 138, blink ? TI.white : active ? TI.lightYellow : TI.gray);
+      if (active) { cx.fillStyle = TI.lightYellow; cx.fillRect(x, 148, 5, 1); }
+    }
+    center(matchMedia('(hover: none)').matches
+      ? 'SWIVEL PICKS  -  FIRE LOCKS IN'
+      : 'ARROWS OR TYPE  -  SPACE LOCKS IN', 172, '#555');
     return;
   }
 
@@ -707,7 +879,7 @@ function render() {
   if (game.paused)         center('PAUSED', 120, TI.lightYellow);
   if (game.state === 'over') {
     center('GAME OVER', 112, TI.mediumRed);
-    if (game.score >= game.high && game.score > 0) center('NEW HIGH SCORE', 126, TI.lightYellow);
+    if (HiScore.qualifies(game.score)) center('NEW HIGH SCORE', 126, TI.lightYellow);
     center('FIRE TO CONTINUE', 142, TI.gray);
   }
 }
@@ -731,6 +903,19 @@ window.__invaders = {
   get alive()   { return game.invaders.filter(i => i.alive).length; },
   get entities(){ return game.invaders.length + game.bombs.length +
                          game.boom.length + (game.bullet?1:0) + (game.ufo?1:0); },
-  game, newGame, resetWave, respawn, toTitle, Sound, waveStartY
+  game, newGame, resetWave, respawn, toTitle, Sound, waveStartY,
+  HiScore, LETTERS, startEntryOrTitle, advanceEntry, topScore, Stick, TI,
+  geom: { W, H, PLAYER_Y, INVADE_LINE, ROWS, COLS, TOTAL },
+  sim: {
+    input: simInput,
+    step(dt) { update(dt); },
+    reset() { simInput.left = simInput.right = simInput.fire = false; },
+    observe() {
+      return { state: game.state, score: game.score, wave: game.wave,
+               lives: game.lives, alive: game.invaders.filter(i => i.alive).length,
+               paddleX: game.ship ? game.ship.x : 0,
+               ship: game.ship ? { x: game.ship.x } : null };
+    }
+  }
 };
 </script>

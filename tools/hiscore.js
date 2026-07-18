@@ -9,8 +9,15 @@
    That duplication is a deliberate trade: single-file distribution beats DRY.
 
    Rungs currently implementing it:
-     rungs/03-breakout/index.html
-     rungs/02-invaders/index.html   [TODO — still on a single stored high score]
+     rungs/03-breakout/index.html   ✓
+     rungs/02-invaders/index.html   ✓ (ported 2026-07-18)
+
+   This list used to carry a TODO saying rung 2 hadn't adopted it. That TODO sat
+   here, correct and ignored, until Daniel asked why Space Invaders had no
+   leaderboard. **A TODO in a file nobody re-reads is not a process.** Adoption
+   is now enforced by tools/conformance.js, which FAILS a rung missing any shared
+   contract. See INVARIANTS INV-18. Do not re-introduce a TODO here — add a
+   contract to conformance.js instead.
 
    ---------------------------------------------------------------------
    STORAGE CONTRACT

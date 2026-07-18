@@ -67,6 +67,8 @@ index.html             landing page (GitHub Pages) linking every playable rung
 tools/
   playtest-sim.js      tiered simulated players (beginner/intermediate/adept)
   SIM_RESULTS.md       their measured results vs the researched criteria
+  hiscore.js           shared high-score protocol (inlined per rung)
+  conformance.js       fails any rung missing a shared contract
 rungs/
   02-invaders/
     index.html         the game — the only file you need to play or share

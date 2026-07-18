@@ -7,6 +7,13 @@ roadblocks already earned and solved.
 
 ## LOCKED
 
+- **Shared contracts are enforced, never just documented (added 2026-07-18).** Every
+  cross-rung contract — test hook, sim contract, high score protocol, touch layout, swivel
+  stick — is checked by `tools/conformance.js`, which returns FAIL for any rung missing
+  one. Born because the leaderboard shipped on rung 3, was written down as a TODO for
+  rung 2, and then didn't happen for a day. **A convention with no enforcement is a
+  preference, and preferences drift (INV-18).** Adding a new shared contract means adding
+  its check in the same commit. Never re-introduce a TODO in place of a check.
 - **Simulated playtest before human playtest (added 2026-07-18).** Every rung implements
   the **sim contract** — `sim.input` / `sim.step(dt)` / `sim.reset()` / `sim.observe()` —
   so `tools/playtest-sim.js` can drive it with tiered bots (beginner / intermediate /
@@ -251,6 +258,38 @@ roadblocks already earned and solved.
   Both match 1978. Whether to soften it for kids is Daniel's call (UX-24) — A-11 says that
   difficulty was tuned for a coin slot we don't have.
 
-  **NEXT ACTION: port the high score table to rung 2 (Invaders)** — the kids are competing
-  on it and it still has only a single stored high score. Then build the two missing sim
-  tiers, and **rung 4 = Galaga (1981)**, archaeology first.
+- **2026-07-18 — Leaderboard ported to rung 2, swivel stick added, and the process gap
+  closed.** Daniel: *"why does Space Invaders not have a retro leaderboard? I feel we both
+  missed it and the processes shouldn't have allowed us to."* He is right, and worse than
+  he knew: the gap was **written down as a TODO inside `tools/hiscore.js` and shipped
+  anyway.** Documenting it discharged the feeling of handling it without handling it.
+
+  **`tools/conformance.js` built** — checks every rung against every shared contract (test
+  hook, sim contract, sim-cannot-cheat, high score table, storage key, HI-derived-not-
+  stored, initials entry, touch layout, swivel stick). **It caught a real drift on its
+  first run**: rung 3 had the swivel stick but never exposed it on the test hook, making it
+  unverifiable from outside. Caught the author immediately, which is the only enforcement
+  worth trusting. New law: **INV-18 — a convention with no enforcement is a preference,
+  and preferences drift.**
+
+  **Rung 2 now has the full leaderboard** (8 entries, initials entry, HI derived from the
+  table, legacy key deleted) plus the sim contract it was missing. **Both rungs CONFORMANT,
+  10/10.**
+
+  **Swivel stick (UX-25):** left half of the play area is a virtual stick whose origin is
+  wherever the thumb lands — no fixed hotspot to reach for, which is the real answer to
+  Lucius's complaint. Right half fires. Multi-touch verified: steering and firing work
+  simultaneously. Button pad retained as an alternative.
+
+  **UX-26 — game over mechanic KEPT** on Daniel's ruling: *"gotta teach the kids failure to
+  recognize and work within the pattern."* Note this deliberately overrides A-11 — same
+  difficulty, entirely different justification, which is what makes it a decision instead
+  of an inheritance.
+
+  **Testing note:** several verification runs failed spuriously because the browser tab was
+  backgrounded and rAF throttled to one tick per 2.9 s. Re-run deterministically through
+  `sim.step()` — the sim contract makes tests immune to throttling, and I had built it and
+  then not used it for my own verification.
+
+  **NEXT ACTION: build the two missing sim tiers** (`novice` ~20–40, `competent` ~300) so
+  the ladder brackets real humans, then **rung 4 = Galaga (1981)**, archaeology first.

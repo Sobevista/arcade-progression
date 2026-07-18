@@ -328,6 +328,39 @@ don't have. If the kids find it discouraging rather than tense, the mercy option
 push the formation up a row or two on respawn — a deliberate, declared anachronism like
 the high score table. Not doing it unilaterally.
 
+### UX-25 — swivel stick for touch — NEW 2026-07-18 [DANIEL]
+
+> *"What if we did something like a Roblox joystick type deal where they just swivel left
+> and right… and the right hand is the fire button?"*
+
+**Left half of the play area is a virtual stick, right half fires.** The stick's origin is
+**wherever you put your thumb down** — there is no fixed hotspot to reach for, which is the
+real fix for Lucius's small-hands problem. Discrete buttons demand you find them; a stick
+comes to you.
+
+Multi-touch by identifier, so steering and firing are genuinely simultaneous — verified:
+the ship keeps moving while a bullet is fired from the other thumb. 9px deadzone so a
+resting thumb doesn't drift.
+
+**The button pad stays.** This is an alternative, not a replacement — keyboard players,
+mouse users and anyone who prefers buttons lose nothing. Both rungs.
+
+### UX-26 — Invaders game-over mechanic: KEEP — 2026-07-18 [DANIEL]
+
+Ruling on the UX-24 question: **do not soften it.**
+
+> *"Keep the game over mechanic, gotta teach the kids failure to recognize and work within
+> the pattern."*
+
+So: aliens still hold position through a death, and reaching the player's line is still an
+instant game over even with lives in hand. Verified still true after the leaderboard port.
+
+Worth noting this **overrides A-11 deliberately.** A-11 says arcade difficulty was tuned
+for a coin slot we don't have and shouldn't be inherited unexamined. Here the same
+difficulty is being kept for a completely different reason — it teaches pattern
+recognition under failure. Same mechanic, different justification, and the justification is
+what makes it a decision rather than an inheritance.
+
 ### UX-20 — breakthrough now spikes to max speed — NEW 2026-07-18 (fidelity fix)
 
 Chasing the reset question surfaced a documented 1976 rule I had only half-implemented:

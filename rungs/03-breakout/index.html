@@ -409,13 +409,51 @@ function bindTap(id, fn) {
   el.addEventListener('touchstart', h, {passive:false});
   el.addEventListener('click', h);
 }
-/* Tap the play area to serve/confirm. With the arrows pushed to the tablet's
-   edges, the centre FIRE button is the one thing a thumb resting on an arrow
-   can't reach — so the whole screen works too. */
-(() => {
-  const fire = e => { e.preventDefault(); Sound.unlock();
-    touch.fire = true; setTimeout(() => { touch.fire = false; }, 90); };
-  cv.addEventListener('touchstart', fire, { passive:false });
+/* ---- SWIVEL STICK (touch) — shared pattern, see rung 2 for the full note ---
+   LEFT half of the play area = a virtual stick whose origin is wherever you put
+   your thumb down; swivel left/right to steer. RIGHT half = fire. Multi-touch
+   by identifier so steering and firing are simultaneous. The button pad still
+   works; this is an alternative, not a replacement. */
+const Stick = (() => {
+  const DEAD = 9;
+  let stickId = null, originX = 0, curX = 0, fireId = null;
+  const state = { active:false, ox:0, dx:0 };
+  function apply() {
+    const dx = curX - originX;
+    state.dx = dx;
+    touch.left  = state.active && dx < -DEAD;
+    touch.right = state.active && dx >  DEAD;
+  }
+  function start(e) {
+    const r = cv.getBoundingClientRect();
+    for (const t of e.changedTouches) {
+      const leftHalf = (t.clientX - r.left) < r.width / 2;
+      if (leftHalf && stickId === null) {
+        stickId = t.identifier; originX = curX = t.clientX;
+        state.active = true; state.ox = t.clientX - r.left;
+      } else if (!leftHalf && fireId === null) {
+        fireId = t.identifier; touch.fire = true;
+      }
+    }
+    apply(); e.preventDefault(); Sound.unlock();
+  }
+  function move(e) {
+    for (const t of e.changedTouches) if (t.identifier === stickId) curX = t.clientX;
+    apply(); e.preventDefault();
+  }
+  function end(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = null; state.active = false;
+                                      touch.left = touch.right = false; }
+      if (t.identifier === fireId)  { fireId = null; touch.fire = false; }
+    }
+    apply();
+  }
+  cv.addEventListener('touchstart',  start, { passive:false });
+  cv.addEventListener('touchmove',   move,  { passive:false });
+  cv.addEventListener('touchend',    end,   { passive:false });
+  cv.addEventListener('touchcancel', end,   { passive:false });
+  return state;
 })();
 
 bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
@@ -810,8 +848,8 @@ window.__breakout = {
   get paddleW(){ return game.paddleW; },
   get entities(){ return game.bricks.length + (game.ball ? 1 : 0); },
   game, newGame, newLevel, newBall, launch, toTitle, Sound,
-  SPEED, ROW_DEF, MAX_WALLS, PERFECT, HiScore, LETTERS,
-  startEntryOrTitle, advanceEntry,
+  SPEED, ROW_DEF, MAX_WALLS, PERFECT, HiScore, LETTERS, TI,
+  startEntryOrTitle, advanceEntry, topScore, Stick,
   geom: { W, H, WALL, PLAY_L, PLAY_R, CEIL, COLS, ROWS,
           BRICK_W, BRICK_H, BRICK_TOP, PADDLE_Y, PADDLE_FULL, PADDLE_H, BALL,
           PADDLE_SPEED: 0.13 },

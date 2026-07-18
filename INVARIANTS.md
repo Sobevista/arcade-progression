@@ -268,6 +268,34 @@ intent; only the rendered box is fact. And a selector list applies every declara
 every selector: check that each one is sensible for *each* element, not just the one you
 were thinking about.
 
+### INV-18 — A convention with no enforcement is a preference, and preferences drift
+The high score table shipped on rung 3. Rung 2 didn't get it and sat on a single stored
+high score for a full day.
+
+**The gap was known.** I wrote it down myself, inside `tools/hiscore.js`:
+
+> `rungs/02-invaders/index.html   [TODO — still on a single stored high score]`
+
+Documented, then shipped past. It surfaced only when Daniel asked *"why does Space
+Invaders not have a retro leaderboard?"* — and his follow-up is the actual finding:
+**"the processes shouldn't have allowed us to."**
+
+A TODO in a file nobody re-reads is not a process. It is a note to yourself that you have
+already decided not to act on. Writing the gap down *felt* like handling it, which is
+exactly what made it dangerous — the documentation discharged the sense of obligation
+without discharging the obligation.
+
+**The invariant:** the moment you introduce a shared contract across more than one
+implementation, **you must also introduce the thing that fails when a member doesn't
+implement it.** Not a note. Not a checklist a human reads. A check that runs and returns
+FAIL. If enforcement is more expensive than the contract is worth, the contract isn't
+worth having.
+
+`tools/conformance.js` is that check for this repo. It found a real drift on its first
+run — the swivel stick existed in rung 3 but wasn't exposed on the test hook, so it was
+unverifiable from outside. Caught the author, immediately, which is the only kind of
+enforcement worth trusting.
+
 ---
 
 ## Ledger
@@ -291,6 +319,7 @@ were thinking about.
 | 15 | Modal states define their own bindings, and assume every button is already held | Breakout | "DAN" saved as "ADA"; WASD aliases spun the letter wheel |
 | 16 | Never text-process source files with the shell when an edit tool exists | Breakout | PowerShell re-encode corrupted 29 em dashes, silently |
 | 17 | Layout intent is not layout fact — measure the rendered box | Breakout + Invaders | "width:100%" was shipping at 448px of 921px |
+| 18 | A convention with no enforcement is a preference, and preferences drift | Invaders | leaderboard missed for a day; the TODO was written and ignored |
 
 ---
 
