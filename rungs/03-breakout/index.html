@@ -161,12 +161,20 @@ const BALL      = 3;
    information. Daniel's call 2026-07-18: legibility wins, this is a UX problem
    not a fidelity requirement. darkYellow (gold) is clearly distinct from the red
    above it, and green sits between it and the pale yellow below, so no two
-   adjacent bands are confusable. See UX_DECISIONS UX-17. */
+   adjacent bands are confusable. See UX_DECISIONS UX-17.
+
+   REVISED AGAIN 2026-07-18 after playtest 2: gold still interfered with the red
+   band in motion ("makes lines 1 and 3 do funky things to me while playing").
+   Measured separation was fine at rest (115) but reading colour while tracking
+   a moving ball is a harder task than comparing two swatches. Moved to darkBlue
+   — a different hue family entirely. Adjacent separations are now 227 / 211 /
+   207, all near-maximal. This is a real fidelity cost (the 1976 band was orange)
+   taken deliberately for legibility. A-10. */
 const ROW_DEF = [
   { col: TI.mediumRed,   pts: 7, name:'red'    },
   { col: TI.mediumRed,   pts: 7, name:'red'    },
-  { col: TI.darkYellow,  pts: 5, name:'orange' },
-  { col: TI.darkYellow,  pts: 5, name:'orange' },
+  { col: TI.darkBlue,    pts: 5, name:'orange' },
+  { col: TI.darkBlue,    pts: 5, name:'orange' },
   { col: TI.mediumGreen, pts: 3, name:'green'  },
   { col: TI.mediumGreen, pts: 3, name:'green'  },
   { col: TI.lightYellow, pts: 1, name:'yellow' },
@@ -186,20 +194,32 @@ const ROW_DEF = [
    exact timing lives in discrete circuit behaviour nobody can read out of a
    binary. Anyone quoting you a pixels-per-frame figure is reconstructing it.
 
-   Revised 2026-07-18 after playtest. The first pass opened at 1.92 px/frame;
-   the discrete-logic era ran roughly 1-2 px/frame, so wall 1 was starting at
-   the TOP of the period range. Lowered the floor and widened the ramp — the
-   escalation is the authored feature, so it should be felt, not just measured.
-     step 0  0.085  ->  1.42 px/frame   (was 1.92)
-     step 1  0.110  ->  1.83
-     step 2  0.140  ->  2.33
-     step 3  0.175  ->  2.92
-     step 4  0.215  ->  3.58            (was 3.75)
-   Top/start ratio 2.53x, up from 1.96x.                                     */
-const SPEED = [0.085, 0.110, 0.140, 0.175, 0.215];
+   Revised 2026-07-18 (playtest 1): opened at 1.92 px/frame, top of the era
+   range. Floor lowered to 1.42.
+
+   Revised again 2026-07-18 (playtest 2). Daniel: "the initial speed is good,
+   the progressive increase is gapped too wide... it is like lightning on level
+   1 when I get to the last row" — and he could not clear wall 1 without dying.
+   The floor was right; the ~25%-per-step jumps were not. Narrowed to ~12.5%:
+     step 0  0.085  ->  1.42 px/frame   (unchanged - he confirmed this one)
+     step 1  0.096  ->  1.60            (was 1.83)
+     step 2  0.108  ->  1.80            (was 2.33)
+     step 3  0.121  ->  2.02            (was 2.92)
+     step 4  0.137  ->  2.28            (was 3.58)
+   Top/start ratio 1.61x, down from 2.53x. The curve is still felt - four
+   distinct steps - but the top is now catchable rather than a wall.         */
+const SPEED = [0.085, 0.096, 0.108, 0.121, 0.137];
+
+/* The 1976 original ships exactly TWO walls, worth 448 points each — max score
+   896, after which the ball bounces harmlessly off empty walls forever. There is
+   no wall 3. Ours previously generated walls endlessly, which meant the game had
+   no win state at all. Restored: two walls, then you've beaten it.
+   Our layout produces exactly 448/wall: 14 cols x 2 rows x (7+5+3+1) = 448. */
+const MAX_WALLS = 2;
+const PERFECT   = 896;
 
 const game = {
-  state: 'title',            // title | serve | play | dying | over | cleared
+  state: 'title',            // title | serve | play | dying | over | cleared | won
   paused: false,
   score: 0, high: loadHigh(), balls: 3, level: 1,
   bricks: [], paddleW: PADDLE_FULL, paddleX: 0,
@@ -236,6 +256,19 @@ function newLevel() {                      // fresh wall, curve resets (1976)
   newBall();
 }
 function newBall() {                       // lost a ball, wall persists
+  /* The speed curve RESETS on a new ball. [ASSUMED — no source either way; see
+     ARCHAEOLOGY A-9, there is no ROM to read this out of.] Chosen deliberately
+     on playability grounds: without it, losing a ball at top speed hands you
+     the remaining balls already at maximum difficulty, which is a death spiral
+     — the game gets harder exactly when you are least equipped, and there is no
+     path back. Daniel could not clear wall 1. The row flags reset too, so the
+     orange/red triggers can fire again and the curve genuinely replays.
+     What does NOT reset: the halved paddle. That one IS documented as a
+     punishment for breaking through, and it persists for the rest of the wall. */
+  game.hits = 0;
+  game.speedStep = 0;
+  game.hitOrange = false;
+  game.hitRed = false;
   game.paddleX = (W - game.paddleW) / 2;
   game.ball = null;
   game.state = 'serve';
@@ -356,12 +389,20 @@ function stepBall(dt) {
     b.y += sy;
     if (b.y - BALL/2 <= CEIL) {
       b.y = CEIL + BALL/2; b.vy = Math.abs(b.vy); Sound.wall();
-      // 1976: paddle halves once the ball breaks through to the top wall
+      /* 1976: breaking through to the back wall is punished with BOTH a halved
+         paddle AND the ball jumping to maximum speed. Documented behaviour —
+         I had only implemented the paddle half of it until 2026-07-18. It is
+         gated behind a genuine player achievement and the curve resets on a
+         new ball, so it reads as a dramatic spike rather than a death spiral. */
       if (!game.brokeThrough) {
         game.brokeThrough = true;
         game.paddleW = PADDLE_FULL / 2;
         game.paddleX = Math.min(game.paddleX, PLAY_R - game.paddleW);
-        game.msg = 'PADDLE HALVED'; game.msgTimer = 1200;
+        while (game.speedStep < SPEED.length - 1) game.speedStep++;
+        const mag = Math.hypot(b.vx, b.vy) || 1, sp = SPEED[game.speedStep];
+        b.vx = b.vx / mag * sp; b.vy = b.vy / mag * sp;
+        game.msg = 'BREAKTHROUGH'; game.msgTimer = 1400;
+        Sound.speed();
       }
     }
     hit = brickAt(b.x, b.y);
@@ -418,8 +459,17 @@ function update(dt) {
     if (held.fire() && !firePrev) game.state = 'title';
     firePrev = held.fire(); return;
   }
+  if (game.state === 'won') {
+    if (held.fire() && !firePrev) game.state = 'title';
+    firePrev = held.fire(); return;
+  }
   if (game.state === 'cleared') {
-    if (game.msgTimer <= 0) { game.level++; newLevel(); }
+    if (game.msgTimer <= 0) {
+      if (game.level >= MAX_WALLS) {            // 1976: there is no wall 3
+        game.state = 'won';
+        if (game.score > game.high) { game.high = game.score; saveHigh(game.high); }
+      } else { game.level++; newLevel(); }
+    }
     return;
   }
   if (game.paused) { firePrev = held.fire(); return; }
@@ -457,9 +507,16 @@ function render() {
   text(String(game.score).padStart(4,'0'), 6, 11, TI.white);
   const hs = 'HI ' + String(game.high).padStart(4,'0');
   text(hs, W - textW(hs) - 6, 3, TI.gray);
-  const lv = 'WALL ' + game.level;
+  const lv = 'WALL ' + game.level + '/' + MAX_WALLS;
   text(lv, W - textW(lv) - 6, 11, TI.darkYellow);
   if (Sound.muted) center('SOUND OFF', 3, '#555');
+  /* Bricks remaining. Modern retention research is blunt about this: players
+     abandon a stage far more readily when they cannot tell how much is left.
+     The fix for "would anyone have the patience" is usually visible distance,
+     not less content. See UX-22. */
+  if (game.state !== 'title')
+    center('BRICKS ' + String(game.bricks.filter(b => b.alive).length).padStart(3,'0'),
+           11, '#666');
 
   if (game.state === 'title') {
     center('BREAKOUT', 92, TI.lightRed);
@@ -500,14 +557,18 @@ function render() {
     cx.fillRect((game.ball.x - BALL/2)|0, (game.ball.y - BALL/2)|0, BALL, BALL);
   }
 
-  // balls remaining
+  /* Labelled. Unlabelled iconography is a guessing game: Daniel played this and
+     could not tell what either dot row meant. If a HUD element needs explaining,
+     it needs a label — see UX-21. */
+  text('BALLS', 8, H - 18, '#555');
   cx.fillStyle = TI.cyan;
-  for (let i = 0; i < game.balls; i++) cx.fillRect(8 + i*8, H - 8, 3, 3);
+  for (let i = 0; i < game.balls; i++) cx.fillRect(8 + i*8, H - 7, 3, 3);
 
-  // speed pips — the authored curve, made visible
-  for (let i = 0; i < SPEED.length; i++) {
+  const sl = 'SPEED';
+  text(sl, W - textW(sl) - 8, H - 18, '#555');
+  for (let i = 0; i < SPEED.length; i++) {           // the authored curve, visible
     cx.fillStyle = i <= game.speedStep ? TI.lightRed : '#2a2a2a';
-    cx.fillRect(W - 8 - (SPEED.length - i)*6, H - 8, 4, 3);
+    cx.fillRect(W - 8 - (SPEED.length - i)*6, H - 7, 4, 3);
   }
 
   if (game.state === 'serve') center('PRESS SPACE TO SERVE', 150, TI.darkYellow);
@@ -517,6 +578,13 @@ function render() {
     center('GAME OVER', 112, TI.mediumRed);
     if (game.score >= game.high && game.score > 0) center('NEW HIGH SCORE', 126, TI.lightYellow);
     center('FIRE TO CONTINUE', 142, TI.gray);
+  }
+  if (game.state === 'won') {
+    center('BOTH WALLS CLEARED', 106, TI.mediumGreen);
+    center(game.score >= PERFECT ? 'PERFECT ' + PERFECT : 'SCORE ' + game.score,
+           122, TI.lightYellow);
+    center('THERE IS NO WALL 3', 136, '#666');   // 1976: the game genuinely ends
+    center('FIRE TO CONTINUE', 152, TI.gray);
   }
 }
 

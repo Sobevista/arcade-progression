@@ -137,6 +137,25 @@ holding the moment it destroys information the design depends on. The 1/3/5/7 sc
 a *risk gradient* — the player is supposed to see that the valuable bricks are the hard
 ones. A palette that hides the gradient isn't fidelity, it's a bug wearing a costume.
 
+**REVISED AGAIN — playtest 2, 2026-07-18.** Gold wasn't enough either. Daniel: *"it makes
+lines 1 and 3 do funky things to me while playing... Lets make one of the rows blue? We
+can so I feel we should."*
+
+My 115 was a real number measuring the wrong thing — two swatches compared at rest, when
+the actual task is reading bands in peripheral vision while tracking a fast ball. Became
+**INV-13**. Orange band moved to `darkBlue`, a different hue family entirely:
+
+| Pairing | Distance |
+|---|---|
+| red ↔ blue | **227** |
+| blue ↔ green | **212** |
+| green ↔ yellow | **207** |
+| cyan paddle ↔ blue bricks | 151 (paddle is 130 px away at the opposite end) |
+
+Every adjacent pair now above 200. **Fidelity cost, taken deliberately and recorded:** the
+1976 band was orange, ours is blue. The 1/3/5/7 gradient being legible matters more than
+the hue being right — same reasoning as A-10, applied twice.
+
 ### UX-18 — ball speed curve — REVISED 2026-07-18 after playtest
 
 Daniel: *"seems a bit fast for wall 1... I would like the reference."*
@@ -165,6 +184,103 @@ top speed, 61 fps.
 
 **Re-pick trigger:** if a credible circuit-level reconstruction of the original timing
 ever surfaces, this table gets replaced by it and the [ASSUMED] tag comes off.
+
+**REVISED AGAIN — playtest 2, 2026-07-18.** Daniel, who is not a beginner: *"I cannot make
+it past level 1 without dying. That would make a lot of people quit soon after... I think
+the initial speed is good, I think the progressive increase is gapped too wide. It is like
+lightning on level 1 when I get to the last row."*
+
+The floor was right; the **jumps** were wrong. Each step was ~25%, compounding to 2.53×
+across a single wall — and since the orange and red triggers fire as soon as the ball
+reaches those rows, top speed arrived early in wall 1 rather than late in the game.
+
+| Step | Playtest 1 | Now | Jump |
+|---|---|---|---|
+| 0 | 1.42 px/f | **1.42** | — (confirmed good) |
+| 1 | 1.83 | **1.60** | +12.9% |
+| 2 | 2.33 | **1.80** | +12.5% |
+| 3 | 2.92 | **2.02** | +12.0% |
+| 4 | 3.58 | **2.28** | +13.2% |
+
+Total ratio **2.53× → 1.61×**. Four distinct steps are still felt, but the top is now
+catchable instead of a wall.
+
+### UX-19 — speed curve resets on a new ball — NEW 2026-07-18
+
+Daniel asked directly whether the ball should slow down again after a death. **No source
+either way** (A-9 — no ROM to read), so this is a design call, not a fidelity one.
+
+**Chosen: the curve fully resets on a new ball** — speed step, hit count, and the
+orange/red row flags, so the escalation genuinely replays.
+
+Reasoning: without it, losing a ball at top speed hands you every remaining ball already
+at maximum difficulty. The game gets harder exactly when you are least equipped and there
+is no route back — a death spiral, and the most likely explanation for "a lot of people
+would quit."
+
+**What deliberately does NOT reset: the halved paddle.** That one *is* documented as the
+punishment for breaking through, and it persists for the rest of the wall.
+
+### UX-21 — HUD labels — FIXED 2026-07-18
+
+Daniel: *"There should be titles under the blue dots in the lower left that I think
+represents lives and in the lower right idk what the red dots with 5 there represents."*
+
+He was **guessing** at one and had no idea about the other. Unlabelled iconography is a
+quiz. Added `BALLS` and `SPEED` labels, plus `BRICKS nnn` and `WALL n/2` up top.
+
+**Rule going forward:** if a HUD element needs explaining, it needs a label. Retro
+aesthetic is not a licence to hide state — the originals had physical cabinet artwork,
+instruction cards and an attract mode doing that job, none of which survive a port to a
+web page. Losing the cabinet means the screen has to carry what the cabinet used to.
+
+### UX-22 — brick count: 112 or fewer? — RESEARCHED 2026-07-18, awaiting Daniel
+
+Daniel asked whether 112 bricks is too many for modern patience, and asked for a
+cross-reference against research rather than a vibe.
+
+**The premise turns out to be wrong in an interesting way.** Archaeology Finding 5: a
+1976 arcade credit was engineered to end in **~180 seconds**. Breakout ships exactly two
+walls, 448 points each, max 896. **Most players never cleared a single wall** — 896 was
+legendary, not expected. The wall was never a completion target; it was a *score
+reservoir* you were supposed to fail at, interestingly, for a quarter.
+
+So "112 bricks is too many to clear" measures the game against a goal it never had.
+
+**Modern research, the other half of the cross-reference:**
+
+- Casual mobile session lengths: top-quartile games ~**7 min**, mid ~**4 min**, low ~**3 min**.
+  A 112-brick wall sits inside that envelope — length is not obviously the problem.
+- Early-session behaviour in the first 72 hours predicts long-term retention better than
+  any single retention number — so *the first play* has to feel completable.
+- The finding that actually bites: **players abandon a stage much more readily when they
+  cannot tell how much is left.** Predictable remaining effort keeps people in.
+- Both failure modes are real: too fast → churn from content depletion; too slow → tedium.
+
+**Applied, cheapest first:**
+
+1. **DONE — make the distance visible.** `BRICKS nnn` counter and `WALL n/2`. The research
+   points at *legibility of remaining effort*, not less content, as the first lever.
+2. **DONE — give the game an ending.** Ours generated walls endlessly, so it had **no win
+   state at all** — arguably worse for a modern player than the original. Restored to the
+   1976 two-wall limit with a win screen. There is now a finish line, and it is the
+   historically correct one.
+3. **HELD — reducing the brick count.** Deliberately not done yet. Two changes just landed
+   that attack the same complaint; changing brick count in the same pass would make it
+   impossible to know which one worked.
+
+**Recommendation:** play it with the counter and the 2-wall ending in place. If it still
+drags, cut rows 8 → 6 (112 → 84 bricks, 336/wall) and we will *know* it was content
+length rather than opacity. **Daniel's call after the next playtest.**
+
+### UX-20 — breakthrough now spikes to max speed — NEW 2026-07-18 (fidelity fix)
+
+Chasing the reset question surfaced a documented 1976 rule I had only half-implemented:
+breaking through to the back wall punishes the player with **both** a halved paddle **and**
+the ball jumping to maximum speed. I had shipped only the paddle half.
+
+Now implemented. It reads as a dramatic spike rather than a death spiral specifically
+*because* UX-19 resets the curve on the next ball — the two decisions only work together.
 
 ---
 

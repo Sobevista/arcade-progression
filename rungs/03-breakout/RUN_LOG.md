@@ -92,12 +92,84 @@ cost anything yet is that the rule to suspect the test first was written down af
   Removed. Second time this session — tests that touch persistent user state must clean
   up, and I keep needing to be reminded by my own log.
 
+### 2026-07-18 — playtest 2 (Daniel): the difficulty was actually broken
+
+- *"I am not a new booty to gaming and I cannot make it past level 1 without dying. That
+  would make a lot of people quit soon after."* The most important feedback of the rung —
+  the game was **failing at its job** and my suite had no way to notice, because "is this
+  winnable" was never a pass criterion and could not have been. INV-9, third confirmation.
+- **Colour, second attempt.** Gold still interfered with red in motion. My 115 RGB
+  separation was a real number **measuring the wrong task** — two swatches at rest, when
+  the actual job is reading bands peripherally while tracking a fast ball. Moved to
+  `darkBlue`: adjacent separations now **227 / 212 / 207**. Became **INV-13** — a metric
+  that doesn't replicate the user's task doesn't validate it. Worth noting *how* this
+  failed: I stopped looking precisely **because** I had measured something. [VERIFIED]
+- **Speed gaps narrowed.** Daniel's diagnosis was exact — floor good, jumps too wide. Each
+  step was ~25%, compounding to **2.53×** within a single wall, and because the orange/red
+  triggers fire on reaching those rows, top speed arrived *early in wall 1*. Narrowed to
+  ~12.5% per step, total **1.61×**. Four steps still distinctly felt; the top is now
+  catchable. [VERIFIED]
+- **Speed curve now resets on a new ball (UX-19).** He asked whether it should — no source
+  either way (A-9), so it's a design call. Without it, dying at top speed hands you every
+  remaining ball at maximum difficulty with no route back: a death spiral, and the likeliest
+  mechanical cause of "a lot of people would quit." Resets speed, hits, and the row flags
+  so the curve genuinely replays. The halved paddle deliberately persists — that one *is*
+  documented. [VERIFIED]
+- **Fidelity gap found while chasing that question:** the 1976 back-wall breakthrough
+  punishes with **max speed AND** the smaller paddle. I had implemented only the paddle.
+  Now both (UX-20) — and it only reads as a dramatic spike rather than a death sentence
+  *because* the curve resets on the next ball. The two decisions only work as a pair.
+- Re-verified after all four changes: row values 1/3/5/7 one brick each · all four triggers
+  fire in sequence · breakthrough halves paddle **and** maxes speed · death resets curve to
+  1.42 px/frame while leaving the paddle halved · zero tunnelling · **61 fps**. [VERIFIED]
+
+**Pattern worth stating plainly, three playtests in:** every single time, Daniel has found
+something the suite structurally could not. Not bugs it missed — bugs it had no *category*
+for. Tunnelling was in scope and got caught by machine. "Is this winnable," "can I read
+this while moving," "does the ramp feel like lightning" are not assertions, and no amount
+of test coverage converts them into ones.
+
+### 2026-07-18 — playtest 3: HUD legibility, and the question that reframed the rung
+
+- **Unlabelled HUD.** Daniel was *guessing* what the lower-left dots meant and had no idea
+  about the lower-right ones. Added `BALLS`, `SPEED`, `BRICKS nnn`, `WALL n/2`. Standing
+  rule now: if a HUD element needs explaining, it needs a label. The originals had cabinet
+  artwork, instruction cards and an attract mode carrying that load — none of which
+  survive a port to a web page, so the screen has to do it. [VERIFIED]
+- **"Is the point to break through, or to clear all the squares?"** Researched rather than
+  answered from memory: clear the wall. **Exactly two walls exist, 448 points each, max
+  896**, after which the ball bounces off empty walls forever — there is no wall 3.
+  **Our layout produces exactly 448 per wall** (14 × 2 × (7+5+3+1)) — independent
+  confirmation the brick layout is historically right. [VERIFIED]
+- **Found a real gap doing so: our game had NO WIN STATE.** It generated walls endlessly.
+  For a modern player that is arguably worse than the original — infinite content with no
+  finish line. Restored the 1976 two-wall limit plus a win screen. Verified: wall 1 clear
+  → wall 2 → `won`, high score banked, fire returns to title. [VERIFIED]
+- **A-11, the best archaeology finding of the rung, and it reframes the whole project:**
+  arcade difficulty was a *business model*. A quarter was engineered to reach GAME OVER in
+  **~180 seconds**; Bushnell in 1971: *"reward the first quarter and the hundredth."* So
+  **most players never cleared even one wall** — 896 was legendary, not expected. The wall
+  was never a completion target, it was a **score reservoir you were meant to fail at**.
+  Which means "authentic" difficulty is not automatically good difficulty: **it was tuned
+  by an accountant**, and we have no coin slot. [VERIFIED]
+- Cross-referenced against modern retention research for Daniel's brick-count question —
+  full write-up in UX-22. Short version: casual sessions run 3–7 minutes so length isn't
+  obviously wrong, but players abandon a stage far more readily **when they can't tell how
+  much is left**. So the first lever is visible distance, not less content. Brick-count
+  reduction deliberately **held** — two changes already landed against this complaint, and
+  changing a third would make attribution impossible.
+- Regressions re-verified after all of it: 448/wall · row values 1/3/5/7 one brick each ·
+  death still resets the speed curve · 61 fps. [VERIFIED]
+
 ### Open for Daniel
 
 - ~~**Palette legibility.**~~ **CLOSED** — orange → `darkYellow`, separation more than
   doubled. See UX-17.
 - ~~**Ball speed reference.**~~ **CLOSED as far as it can be** — no authoritative source
   exists (A-9). Retuned against the era norm and Daniel's playtest; tagged ASSUMED.
-- **Playtest 2 pending.** The speed and colour changes have been machine-verified but not
-  yet *played*. Per INV-9 that is a different oracle, and on this project it has caught
-  things the suite structurally could not, every single time.
+- **UX-22 — brick count.** Held deliberately. Play it with the `BRICKS` counter and the
+  two-wall ending in place. If it still drags, cut 8 rows → 6 (112 → 84 bricks, 336/wall)
+  and we'll *know* it was content length rather than opacity. Changing it now would
+  confound three fixes aimed at the same complaint.
+- **Playtest 4 pending** — specifically: can wall 1 be cleared now, and does the visible
+  distance change how long it feels?

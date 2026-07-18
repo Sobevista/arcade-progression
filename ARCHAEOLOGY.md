@@ -151,7 +151,9 @@ Unlike Space Invaders, **Breakout's difficulty curve was deliberately designed**
 
 - Ball speeds up **after 4 hits**, again **after 12 hits**, and again on reaching the
   **orange** and **red** rows
-- The paddle **halves in width** once the ball breaks through to the top wall
+- Breaking through to the **back wall** is punished with **both** a halved paddle **and**
+  the ball jumping to **maximum speed** (found 2026-07-18 while chasing a different
+  question — I had originally implemented only the paddle half of this rule)
 - 8 brick rows, two per colour: yellow **1 pt**, green **3**, orange **5**, red **7**
 - 3 balls per game
 
@@ -192,6 +194,38 @@ over a monochrome CRT. Two different companies, two countries, two years apart, 
 hack. A-3 is upgraded from an anecdote to an **era-defining constraint**: for most of the
 1970s, colour was a physical layer, not a software property.
 
+### Finding 5 — arcade difficulty was a business model, not a design ideal
+
+This is the one that reframes every rung in this project.
+
+A coin-op cabinet earned money per play. **A single quarter was engineered to reach GAME
+OVER in roughly 180 seconds.** Nolan Bushnell's formulation, 1971: *"all the best games
+are easy to learn and difficult to master. They should reward the first quarter and the
+hundredth."* Cabinets could take 2,500 quarters a week; difficulty was the throttle on
+revenue per hour.
+
+So the brutality was **deliberate and commercial**. And it lands directly on Breakout's
+numbers:
+
+- The full wall is 112 bricks worth **448 points**. Two walls exist, max score **896**,
+  after which the ball bounces off empty walls forever — there is no wall 3.
+- If a credit ends in ~3 minutes, **the overwhelming majority of players never cleared
+  even one wall.** 896 was a legendary achievement, not an expectation.
+
+**Which means the wall was never a completion target. It was a score reservoir.** The
+design intent was that you *fail* to clear it, having spent your quarter interestingly.
+
+**The transferable lesson, and it's the sharpest one in this file:**
+
+> **A-11.** Before copying a design decision, find out what it was optimising for.
+> Arcade difficulty was optimised for revenue per cabinet-hour. We have no coin slot —
+> so inheriting that difficulty means inheriting a constraint whose *reason no longer
+> exists*. A-2 says removing a constraint silently removes what it provided; A-11 is the
+> mirror: **removing a constraint also means you should stop paying its costs.**
+
+The trap for this whole project: "authentic" difficulty is not automatically good
+difficulty. It was tuned by an accountant.
+
 ### Finding 4 — a game with no processor cannot be emulated, only reconstructed
 
 **Breakout is absent from MAME.** Not by oversight — there is nothing to emulate. No CPU
@@ -213,8 +247,12 @@ source rather than presented as fidelity.
 ### Open / unverified
 
 - **Ball speed.** No authoritative source exists (see Finding 4). Ours is tuned against
-  the discrete-logic era norm of roughly 1–2 px/frame and Daniel's playtest, opening at
-  **1.42 px/frame** and escalating to 3.58 across the four authored triggers. **[ASSUMED]**
+  the discrete-logic era norm of roughly 1–2 px/frame and two rounds of playtest, opening
+  at **1.42 px/frame** and escalating to **2.28** across the four authored triggers.
+  **[ASSUMED]**
+- **Whether the speed curve resets after losing a ball.** No source either way — a direct
+  consequence of Finding 4. We reset it, on playability grounds rather than fidelity
+  grounds, and say so (UX-19). **[ASSUMED — and unresolvable from sources]**
 - **Paddle segmentation.** Sources confirm the mechanic — the ball rebounds at different
   angles depending where it strikes the paddle — but **not** how many discrete zones the
   original used, or whether deflection was stepped or continuous. **[ASSUMED]** We will
@@ -253,3 +291,4 @@ source rather than presented as fidelity.
 | A-8 | The deliberate solution can predate the famous accidental one — later ≠ more evolved | 3 | Breakout authored its difficulty curve in 1976; Invaders got one by accident in 1978 |
 | A-9 | Software leaves a readable artifact; hardware leaves only behaviour. A game with no processor can't be emulated, only reconstructed — so some "facts" about it genuinely do not exist | 3 | Breakout is absent from MAME; no ROM to read a ball speed out of |
 | A-10 | A constraint adopted for authenticity stops being worth holding the moment it destroys information the design depends on | 3 | TI palette hid the 1/3/5/7 risk gradient; legibility won |
+| A-11 | Find out what a design decision was optimising for before copying it. Arcade difficulty was tuned for revenue per cabinet-hour — remove the coin slot and you should stop paying its costs | 3 | ~180 s per quarter; 896 max was never an expectation |

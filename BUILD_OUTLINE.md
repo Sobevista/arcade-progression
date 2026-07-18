@@ -132,7 +132,52 @@ roadblocks already earned and solved.
   All regressions re-verified after both changes: row values 1/3/5/7 one brick each, all
   four curve triggers firing in a single run, zero tunnelling at the new top speed, 61 fps.
 
-  **NEXT ACTION: Daniel plays the retuned build** — the changes are machine-verified but
-  not yet felt, and per INV-9 that is a different oracle. Then **rung 4 = Galaga (1981)**,
-  archaeology first: entry-flight paths, dive AI, the capture/rescue beam, and the bonus
-  stages Daniel flagged on rung 2.
+- **2026-07-18 — Rung 3 playtest 2: the difficulty was genuinely broken.** Daniel, an
+  experienced player, could not clear wall 1 without dying. Four changes:
+
+  1. **Orange band → `darkBlue`.** Gold still interfered with red *in motion*. My 115 RGB
+     separation was a real number measuring the wrong task — swatches at rest, when the job
+     is reading bands peripherally while tracking a fast ball. Now 227/212/207 across all
+     adjacent pairs. New law: **INV-13**, a metric that doesn't replicate the user's task
+     doesn't validate it. Notable failure mode: I stopped looking *because* I had measured.
+  2. **Speed jumps narrowed** ~25% → ~12.5% per step; total ratio **2.53× → 1.61×**. Floor
+     unchanged at 1.42 px/frame (he confirmed that one was right).
+  3. **Speed curve resets on a new ball** (UX-19). No source either way (A-9), so decided
+     on playability: without it, dying at top speed leaves every remaining ball at maximum
+     difficulty with no route back.
+  4. **Breakthrough now spikes to max speed** (UX-20) — a documented 1976 rule I had only
+     half-implemented. Works *because* of change 3; the two only function as a pair.
+
+  All regressions re-verified. **Three playtests in, the pattern is unambiguous: every time,
+  the human oracle has found something the suite had no category for.** Tunnelling was in
+  scope and machine-caught. "Is this winnable," "can I read this while moving," "does the
+  ramp feel like lightning" are not assertions and no coverage converts them into ones.
+
+- **2026-07-18 — Rung 3 playtest 3: HUD labels, a win state, and A-11.** Daniel couldn't
+  tell what the HUD dot-rows meant (labels added: BALLS / SPEED / BRICKS nnn / WALL n/2)
+  and asked what the actual objective was. Researching that produced the rung's best
+  finding and a real defect:
+
+  **The defect:** our game generated walls endlessly and therefore had **no win state at
+  all** — arguably worse for a modern player than the original. The 1976 game ships
+  **exactly two walls, 448 points each, max 896**, then genuinely ends. Restored, with a
+  win screen. Our layout independently produces exactly 448/wall, confirming the brick
+  layout is historically correct.
+
+  **A-11 — arcade difficulty was a business model, not a design ideal.** A quarter was
+  engineered to reach GAME OVER in ~180 seconds (Bushnell, 1971: *"reward the first
+  quarter and the hundredth"*). So most players **never cleared even one wall**; 896 was
+  legendary, not expected. The wall was never a completion target — it was a score
+  reservoir you were meant to fail at. **"Authentic" difficulty is not automatically good
+  difficulty: it was tuned by an accountant, and we have no coin slot.** This reframes
+  every remaining rung.
+
+  Daniel's brick-count question cross-referenced against modern retention research (UX-22):
+  casual sessions run 3–7 min so length isn't obviously wrong, but abandonment tracks
+  **not knowing how much is left**. First lever is visible distance, not less content —
+  hence the counter and the ending. **Brick reduction held deliberately** so the next
+  playtest can attribute the effect.
+
+  **NEXT ACTION: Daniel plays it** — can wall 1 be cleared now, and does visible distance
+  change how long it feels? If it still drags, cut 8 rows → 6 (112 → 84). Then **rung 4 =
+  Galaga (1981)**, archaeology first.

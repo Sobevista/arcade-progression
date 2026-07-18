@@ -178,6 +178,29 @@ game was correct. The stale-vector bug was real and worth fixing, but it was *no
 cause of what I was looking at. Finding a genuine bug while wrong about the evidence is
 not vindication; it is a coincidence that feels like skill.
 
+### INV-13 — A metric that doesn't replicate the user's task doesn't validate it
+The orange band was too close to red. I moved it to gold, **measured** the RGB distance
+(51 → 115), declared the gap more than doubled, and called it resolved with numbers on
+the table.
+
+Daniel played it: *"it makes lines 1 and 3 do funky things to me while playing."*
+
+The measurement was real and it was the wrong measurement. I compared two colour swatches
+at rest. The actual task is **reading colour bands in peripheral vision while tracking a
+fast-moving ball under time pressure** — a completely different perceptual job, and one
+where 115 is nowhere near enough. Moving to a different hue family entirely (blue, 227)
+fixed it.
+
+**The invariant:** before trusting a number, ask what task it simulates. A proxy metric
+that is easy to compute is usually easy to compute *because* it dropped the hard part of
+the real task. Passing the proxy is not passing the task, and a confident number makes it
+much harder to notice the difference — I stopped looking precisely *because* I had
+measured something.
+
+This is INV-9's cousin. INV-9: a green suite proves you met your criteria, not that they
+were right. INV-13: a green *metric* proves you improved what you measured, not that you
+improved what matters.
+
 ---
 
 ## Ledger
@@ -196,6 +219,7 @@ not vindication; it is a coincidence that feels like skill.
 | 10 | "Authentic" needs a source, not recall | Invaders | 2 wrong mechanics shipped from memory |
 | 11 | Reset functions are named per event, never per scope | Invaders | **the game's core tension silently deleted by one boolean** |
 | 12 | A cached step vector is stale the moment a collision changes velocity | Breakout | ball ploughed through geometry it had already bounced off |
+| 13 | A metric that doesn't replicate the user's task doesn't validate it | Breakout | measured colour separation at rest; the real task was tracking a moving ball |
 
 ---
 
