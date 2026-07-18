@@ -84,10 +84,48 @@ runway for that, not to replace it.
 Each real playtest is one labelled data point. Record score, outcome and confidence, then
 tune tier parameters until the bots bracket observed human results.
 
-| Human | Score | Outcome | Notes |
-|---|---|---|---|
-| Daniel (experienced player) | 319 | game over on wall 1 | *"tense the whole time"*; labels helped; speed felt right |
-| *(pending)* one of the kids | | | the beginner anchor we actually need |
+| Human | Score(s) | Notes |
+|---|---|---|
+| Daniel (experienced player) | **319** | *"tense the whole time"*; labels helped; speed felt right |
+| Mum (casual) | **21** | first try |
+| 9-year-old | **12, 13, 37** | visible learning curve across three attempts |
+| 6-year-old | **4, 4, 5, 7** | four attempts |
 
-**Next calibration target:** a genuine first-time player. The beginner tier is currently
-the least trustworthy number in the table and the most consequential one.
+## CALIBRATION RESULT — 2026-07-18
+
+**The beginner tier was not miscalibrated. It was mislabelled at the top.**
+
+The bot's beginner tier scored a median of **5**, range **4–7**. The 6-year-old scored
+**4, 4, 5, 7**. That is not approximately right, it is *the same distribution*. The model
+— chase the ball's current position, 260 ms lag, no prediction — turns out to be an
+accurate portrait of an absolute first-timer.
+
+What is wrong is everything above it:
+
+| Tier | Bot median | Real human equivalent |
+|---|---|---|
+| `beginner` | 5 | **6-year-old, first time.** Validated ✅ |
+| *(gap — no tier)* | — | **9yo (12→37), Mum (21)** — genuine novices |
+| *(gap — no tier)* | — | **Daniel, 319** — competent adult |
+| `intermediate` | 826 | far beyond any human we measured |
+| `adept` | 896 perfect, 0 balls lost | not a player; an upper bound |
+
+**Proposed relabel + two new tiers**, so the ladder covers observed reality:
+
+| New name | Anchor | Source |
+|---|---|---|
+| `firstTimer` | ~5 | 6yo — current `beginner`, keep parameters |
+| `novice` | ~20–40 | 9yo / Mum — **needs building** |
+| `competent` | ~300 | Daniel — **needs building** |
+| `expert` | ~800 | current `intermediate`, relabelled |
+| `ceiling` | 896 | current `adept` — not a player, a bound |
+
+The three real anchors we now have (5 / ~25 / 319) are worth more than any number of bot
+runs, and they say the tier ladder had a hole in the middle exactly where every actual
+human lives.
+
+**Note the learning curve too:** the 9-year-old went 12 → 13 → **37** across three tries.
+Nearly 3× in three attempts. That is the strongest signal in the whole dataset that the
+game teaches itself, and no bot tier models improvement at all — every simulated player
+is frozen at one skill level forever. Worth building later: a tier whose parameters
+improve across runs.

@@ -1,4 +1,4 @@
-<meta charset="utf-8">
+﻿<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>BREAKOUT — rung 3</title>
 
@@ -225,19 +225,68 @@ const MAX_WALLS = 2;
 const PERFECT   = 896;
 
 const game = {
-  state: 'title',            // title | serve | play | dying | over | cleared | won
+  state: 'title',            // title | serve | play | dying | over | cleared | won | entry
+  entry: null,               // { chars:[i,i,i], slot, hold, lastRank }
   paused: false,
-  score: 0, high: loadHigh(), balls: 3, level: 1,
+  score: 0, balls: 3, level: 1,
   bricks: [], paddleW: PADDLE_FULL, paddleX: 0,
   ball: null, hits: 0, speedStep: 0,
   hitOrange: false, hitRed: false, brokeThrough: false,
   msgTimer: 0, msg: '', flash: 0
 };
 
-function loadHigh()  { try { return +(localStorage.getItem('breakout.high') || 0); }
-                       catch (e) { return 0; } }
-function saveHigh(v) { try { localStorage.setItem('breakout.high', String(v)); }
-                       catch (e) {} }
+/* The HI display is DERIVED from the high score table, never stored separately.
+   The old standalone `breakout.high` key was a second home for the same fact and
+   promptly drifted — the HUD showed HI 0037 while the table's top row said 0319.
+   One fact, one home. The legacy key is actively deleted on load so an old save
+   can't resurrect the drift. */
+function topScore() { const l = HiScore.list(); return l.length ? l[0].s : 0; }
+try { localStorage.removeItem('breakout.high'); } catch (e) {}   // kill the old home
+
+/* ---- HIGH SCORE TABLE ------------------------------------------------
+   PROTOCOL (shared across every rung — canonical copy in tools/hiscore.js):
+     storage key   arcade.<game>.scores
+     value         JSON array, sorted desc, capped at MAX
+     entry shape   { n: "ABC", s: 319, d: "2026-07-18" }
+
+   Inlined rather than imported because the single-file rule is about
+   DISTRIBUTION — one file you can double-click, email, or drop on a site.
+   A shared script would break that. Cost: this block is duplicated per rung
+   and must be kept in sync with tools/hiscore.js. Deliberate trade.
+
+   ANACHRONISM, DECLARED: initials-entry high score tables did not exist in
+   1976. Star Fire (Exidy, 1979) was first; Asteroids copied it the same year.
+   Three letters specifically because manufacturers wanted to limit obscenities
+   in the attract mode. So this is a 1979 invention imported backwards into a
+   1976 game, on purpose — the competitive loop is the reason kids come back,
+   and that matters more here than the date. Recorded in the Suffering Ledger. */
+const HiScore = (() => {
+  const KEY = 'arcade.breakout.scores', MAX = 8;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+                       catch (e) { return []; } };
+  const store = l => { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} };
+  return {
+    list: load,
+    qualifies(score) {
+      if (score <= 0) return false;
+      const l = load();
+      return l.length < MAX || score > l[l.length - 1].s;
+    },
+    add(name, score) {
+      const l = load();
+      l.push({ n: name, s: score, d: new Date().toISOString().slice(0, 10) });
+      l.sort((a, b) => b.s - a.s);
+      const cut = l.slice(0, MAX);
+      store(cut);
+      return cut.findIndex(e => e.s === score && e.n === name) + 1;
+    },
+    clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  };
+})();
+
+/* No space in the set: SPACE is the confirm button, and a character that is
+   also a control is a character you can never actually enter. */
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
 
 /* ---- INV-11: one function per lifecycle event, no boolean flags ------- */
 function makeBricks() {
@@ -295,13 +344,25 @@ addEventListener('keydown', e => {
   if (e.key === 'p' || e.key === 'P') { if (game.state === 'play') game.paused = !game.paused; }
   if (e.key === 'm' || e.key === 'M') Sound.toggle();
   if (e.key === 'Escape') toTitle();
+  // typing initials directly is the grown-up shortcut; the joystick path below
+  // is the arcade-authentic one and the only one that works on a touchscreen
+  if (game.state === 'entry' && game.entry) {
+    const up = e.key.toUpperCase();
+    if (LETTERS.includes(up) && up.length === 1) {
+      game.entry.chars[game.entry.slot] = LETTERS.indexOf(up);
+      advanceEntry();
+    } else if (e.key === 'Backspace' && game.entry.slot > 0) {
+      game.entry.slot--;
+    } else if (e.key === 'Enter') {
+      while (game.entry) advanceEntry();
+    }
+  }
 });
 addEventListener('keyup', e => { keys[e.key] = false; });
 
 function toTitle() {
   if (game.state === 'title') return;
   game.paused = false;
-  if (game.score > game.high) { game.high = game.score; saveHigh(game.high); }
   game.state = 'title';
 }
 
@@ -337,6 +398,17 @@ const held = {
   left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  || simInput.left,
   right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right || simInput.right,
   fire:  () => keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] || touch.fire || simInput.fire
+};
+
+/* Initials entry needs its OWN bindings. The WASD movement aliases are also
+   letters people put in their initials — typing "DAN" would spin the letter
+   wheel with the A and D while entering it. An input alias bound for one mode
+   WILL fire in another; a modal state must define its bindings, never inherit
+   gameplay ones. See INVARIANTS INV-15. Arrows and touch only here. */
+const entryNav = {
+  left:  () => keys['ArrowLeft']  || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || touch.right || simInput.right,
+  ok:    () => keys[' '] || keys['Enter'] || touch.fire || simInput.fire
 };
 
 /* ---- Speed curve ------------------------------------------------------ */
@@ -445,14 +517,43 @@ function registerHit() {
   if (game.hits === 12) bumpSpeed('12 HITS');
 }
 
+/* ---- Initials entry, arcade style ------------------------------------
+   Left/right cycle the letter, fire locks it in. The same three controls the
+   cabinet had — a stick and one button — which is exactly why it also works on
+   the touch pad without inventing an on-screen keyboard. */
+function startEntryOrTitle() {
+  if (HiScore.qualifies(game.score)) {
+    /* pl/pr/pf start TRUE, not false. The button that got you to this screen is
+       still physically down on the next frame — with false, that same press
+       edge-triggers again and skips slot 0. Typing "DAN" came out as "ADA",
+       shifted by exactly one slot. A modal screen must treat every control as
+       already-held until it is seen released. */
+    game.entry = { chars: [0, 0, 0], slot: 0, hold: 0, pl: true, pr: true, pf: true };
+    game.state = 'entry';
+  } else {
+    game.state = 'title';
+  }
+}
+function advanceEntry() {
+  const e = game.entry;
+  if (!e) return;
+  e.slot++;
+  if (e.slot > 2) {
+    const name = e.chars.map(i => LETTERS[i]).join('');
+    game.lastRank = HiScore.add(name, game.score);
+    game.entry = null;
+    game.state = 'title';
+    Sound.clear();
+  }
+}
+
 function loseBall() {
   game.ball = null;
   game.balls--;
   Sound.lose();
   if (game.balls <= 0) {
     game.state = 'over';
-    if (game.score > game.high) { game.high = game.score; saveHigh(game.high); }
-  } else {
+    } else {
     newBall();
   }
 }
@@ -468,19 +569,32 @@ function update(dt) {
     firePrev = held.fire(); return;
   }
   if (game.state === 'over') {
-    if (held.fire() && !firePrev) game.state = 'title';
+    if (held.fire() && !firePrev) startEntryOrTitle();
     firePrev = held.fire(); return;
   }
+  if (game.state === 'entry') {
+    const e = game.entry;
+    const L = entryNav.left(), Rr = entryNav.right(), OK = entryNav.ok();
+    const cyc = d => { e.chars[e.slot] = (e.chars[e.slot] + d + LETTERS.length) % LETTERS.length; };
+    // edge-trigger, then auto-repeat while held — 27 letters is too many to tap
+    e.hold -= dt;
+    if (L  && !e.pl) { cyc(-1); e.hold = 380; }
+    if (Rr && !e.pr) { cyc(+1); e.hold = 380; }
+    if ((L || Rr) && e.hold <= 0) { cyc(L ? -1 : +1); e.hold = 110; }
+    if (OK && !e.pf) advanceEntry();
+    e.pl = L; e.pr = Rr; e.pf = OK;
+    firePrev = OK;
+    return;
+  }
   if (game.state === 'won') {
-    if (held.fire() && !firePrev) game.state = 'title';
+    if (held.fire() && !firePrev) startEntryOrTitle();
     firePrev = held.fire(); return;
   }
   if (game.state === 'cleared') {
     if (game.msgTimer <= 0) {
       if (game.level >= MAX_WALLS) {            // 1976: there is no wall 3
         game.state = 'won';
-        if (game.score > game.high) { game.high = game.score; saveHigh(game.high); }
-      } else { game.level++; newLevel(); }
+            } else { game.level++; newLevel(); }
     }
     return;
   }
@@ -517,7 +631,7 @@ function render() {
   // HUD
   text('SCORE', 6, 3, TI.gray);
   text(String(game.score).padStart(4,'0'), 6, 11, TI.white);
-  const hs = 'HI ' + String(game.high).padStart(4,'0');
+  const hs = 'HI ' + String(topScore()).padStart(4,'0');
   text(hs, W - textW(hs) - 6, 3, TI.gray);
   const lv = 'WALL ' + game.level + '/' + MAX_WALLS;
   text(lv, W - textW(lv) - 6, 11, TI.darkYellow);
@@ -531,18 +645,60 @@ function render() {
            11, '#666');
 
   if (game.state === 'title') {
-    center('BREAKOUT', 92, TI.lightRed);
-    center('TI-99/4A PALETTE', 108, '#444');
-    if (game.score > 0) center('LAST SCORE ' + game.score, 126, '#555');
+    center('BREAKOUT', 38, TI.lightRed);
+    center('TI-99/4A PALETTE', 52, '#444');
+
+    // The high score table. This is what makes a cabinet social — the whole
+    // point is that somebody else's initials are sitting there taunting you.
+    const list = HiScore.list();
+    center('HIGH SCORES', 74, TI.cyan);
+    if (!list.length) {
+      center('NO SCORES YET', 94, '#555');
+      center('BE THE FIRST', 106, '#444');
+    } else {
+      let y = 90;
+      list.forEach((e, i) => {
+        const fresh = game.lastRank === i + 1;
+        const blink = fresh && ((performance.now()/300|0) % 2);
+        const col = blink ? TI.white : fresh ? TI.lightYellow : TI.gray;
+        text(String(i + 1).padStart(2,' '), 50, y, '#555');
+        text(e.n, 74, y, col);
+        text(String(e.s).padStart(4,'0'), 114, y, col);
+        text(e.d.slice(5), 152, y, '#3d3d3d');
+        y += 10;
+      });
+    }
+
     center(matchMedia('(hover: none)').matches ? 'TAP LAUNCH TO START' : 'PRESS SPACE TO START',
-           146, ((performance.now()/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
-    let yy = 176;
+           184, ((performance.now()/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
+
+    let yy = 204;                                   // scoring legend
     for (let r = 0; r < ROWS; r += 2) {
       cx.fillStyle = ROW_DEF[r].col;
-      cx.fillRect(70, yy, 84, 5);
-      text(String(ROW_DEF[r].pts), 160, yy - 1, ROW_DEF[r].col);
-      yy += 9;
+      cx.fillRect(66, yy, 56, 4);
+      // 10px pitch, not 8 — at 8 the 7px glyphs were touching and the column
+      // of point values read as one smeared shape
+      text(String(ROW_DEF[r].pts) + ' PTS', 130, yy - 2, ROW_DEF[r].col);
+      yy += 10;
     }
+    return;
+  }
+
+  if (game.state === 'entry') {
+    center('NEW HIGH SCORE', 74, TI.lightYellow);
+    center(String(game.score), 94, TI.white);
+    center('ENTER YOUR INITIALS', 116, '#666');
+    const e = game.entry;
+    for (let i = 0; i < 3; i++) {
+      const x = (W/2 | 0) - 21 + i * 16;
+      const active = i === e.slot;
+      const blink = active && ((performance.now()/300|0) % 2);
+      text(LETTERS[e.chars[i]], x, 138, blink ? TI.white : active ? TI.lightYellow : TI.gray);
+      if (active) { cx.fillStyle = TI.lightYellow; cx.fillRect(x, 148, 5, 1); }
+    }
+    center(matchMedia('(hover: none)').matches
+      ? 'ARROWS PICK  -  FIRE LOCKS IN'
+      : 'ARROWS OR TYPE  -  SPACE LOCKS IN', 172, '#555');
     return;
   }
 
@@ -588,7 +744,7 @@ function render() {
   if (game.paused)            center('PAUSED', 120, TI.lightYellow);
   if (game.state === 'over') {
     center('GAME OVER', 112, TI.mediumRed);
-    if (game.score >= game.high && game.score > 0) center('NEW HIGH SCORE', 126, TI.lightYellow);
+    if (game.score >= topScore() && game.score > 0) center('NEW HIGH SCORE', 126, TI.lightYellow);
     center('FIRE TO CONTINUE', 142, TI.gray);
   }
   if (game.state === 'won') {
@@ -620,7 +776,8 @@ window.__breakout = {
   get paddleW(){ return game.paddleW; },
   get entities(){ return game.bricks.length + (game.ball ? 1 : 0); },
   game, newGame, newLevel, newBall, launch, toTitle, Sound,
-  SPEED, ROW_DEF, MAX_WALLS, PERFECT,
+  SPEED, ROW_DEF, MAX_WALLS, PERFECT, HiScore, LETTERS,
+  startEntryOrTitle, advanceEntry,
   geom: { W, H, WALL, PLAY_L, PLAY_R, CEIL, COLS, ROWS,
           BRICK_W, BRICK_H, BRICK_TOP, PADDLE_Y, PADDLE_FULL, PADDLE_H, BALL,
           PADDLE_SPEED: 0.13 },

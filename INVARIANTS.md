@@ -216,6 +216,39 @@ and every terminating condition must be distinguishable in the output. `TIMEOUT`
 `FINISHED` are different results, and a harness that collapses them is manufacturing data.
 Suspect any benchmark whose answer resembles a number you chose.
 
+### INV-15 — A modal state needs its own input bindings, and must assume every button is already held
+Two separate bugs, one root cause: **a modal screen inherited the gameplay input layer.**
+
+**Alias collision.** `A` and `D` are movement aliases *and* letters people put in their
+initials. Typing "DAN" on the high-score screen spun the letter wheel with the A and the D
+while entering it. An input alias bound for one mode **will** be pressed in another.
+
+**Held-button carry-over.** The SPACE that opened the entry screen was still physically
+down on the next frame. With "previous button state" initialised to `false`, that same
+press edge-triggered again and skipped slot 0 — "DAN" saved as **"ADA"**, shifted by
+exactly one slot.
+
+**The invariant, both halves:**
+1. A modal state **defines** its bindings; it never inherits gameplay ones.
+2. On entering a modal state, initialise every previous-button flag to **true** — treat
+   every control as already held until it is observed released. The transition into a mode
+   is itself a button press, and it is still happening when the mode starts.
+
+Corollary worth its own line: **a character that is also a control is a character you can
+never enter.** SPACE confirms, so SPACE cannot be in the alphabet.
+
+### INV-16 — Never text-process source files with the shell when an edit tool exists
+I rewrote a source file with a PowerShell regex pass to rename a variable. PowerShell 5.1
+read the UTF-8 file as Windows-1252 and wrote it back re-encoded, turning **every em dash
+in the file into `â€”`** — 29 of them, silently, in a file that still parsed and ran fine.
+
+The rename itself was correct. The collateral damage had nothing to do with the change and
+would have shipped, because nothing about the game's behaviour was affected.
+
+**The invariant:** use the purpose-built edit tool for source edits. Shell text processing
+carries an encoding round-trip that is invisible in the diff you were looking at, silent at
+runtime, and permanent. The blast radius of a tool is not limited to the thing you aimed it at.
+
 ---
 
 ## Ledger
@@ -236,6 +269,8 @@ Suspect any benchmark whose answer resembles a number you chose.
 | 12 | A cached step vector is stale the moment a collision changes velocity | Breakout | ball ploughed through geometry it had already bounced off |
 | 13 | A metric that doesn't replicate the user's task doesn't validate it | Breakout | measured colour separation at rest; the real task was tracking a moving ball |
 | 14 | A benchmark that can return its own configuration will, and it looks like data | Breakout | sim reported the 8-min cap as the game length |
+| 15 | Modal states define their own bindings, and assume every button is already held | Breakout | "DAN" saved as "ADA"; WASD aliases spun the letter wheel |
+| 16 | Never text-process source files with the shell when an edit tool exists | Breakout | PowerShell re-encode corrupted 29 em dashes, silently |
 
 ---
 

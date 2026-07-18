@@ -269,6 +269,7 @@ source rather than presented as fidelity.
 | 3 balls | **KEEP** | Authentic, and it makes the speed thresholds matter |
 | Contact-point angle control | **KEEP** — it's the reason for this rung | Turns a reflex game into a skill game. The primitive neither neighbour teaches |
 | **No new mechanics beyond the 1976 rule set** | **KEEP — self-imposed** | Deliberately adopting the discipline the TTL chip count used to enforce. If it wasn't in the circuit, it isn't in our build |
+| **High score table with initials** | **DELIBERATE ANACHRONISM — added** | Didn't exist until 1979 (Star Fire), so this is three years early. Added anyway: the competitive loop is what makes a cabinet *social*, and kids won't come back to a game they can't beat each other at. The date matters less than the mechanic. Declared here rather than smuggled in |
 | Building it in discrete logic / a gate simulator | **SKIP** | Teaches TTL, not game design. Wrong axis of suffering |
 | Cellophane colour simulation | **SKIP** | We have real colour; the lesson is recorded, not re-suffered |
 | **TI-99/4A palette has no true orange** | **INVERTED — accepted cost** | Holding the series palette means we *cannot* reproduce Breakout's actual colour bands. Substituting the nearest available. A constraint we chose, now constraining us — exactly how the originals felt |
@@ -292,3 +293,4 @@ source rather than presented as fidelity.
 | A-9 | Software leaves a readable artifact; hardware leaves only behaviour. A game with no processor can't be emulated, only reconstructed — so some "facts" about it genuinely do not exist | 3 | Breakout is absent from MAME; no ROM to read a ball speed out of |
 | A-10 | A constraint adopted for authenticity stops being worth holding the moment it destroys information the design depends on | 3 | TI palette hid the 1/3/5/7 risk gradient; legibility won |
 | A-11 | Find out what a design decision was optimising for before copying it. Arcade difficulty was tuned for revenue per cabinet-hour — remove the coin slot and you should stop paying its costs | 3 | ~180 s per quarter; 896 max was never an expectation |
+| A-12 | The social layer arrived late and was itself an invention. Initials-entry high score tables did not exist until **Star Fire (Exidy, 1979)**; Asteroids copied it the same year. Three letters specifically to limit obscenities in the attract mode | 3 | imported backwards into 1976/78 on purpose — declared, not smuggled |
