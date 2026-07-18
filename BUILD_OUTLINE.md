@@ -7,6 +7,15 @@ roadblocks already earned and solved.
 
 ## LOCKED
 
+- **Simulated playtest before human playtest (added 2026-07-18).** Every rung implements
+  the **sim contract** — `sim.input` / `sim.step(dt)` / `sim.reset()` / `sim.observe()` —
+  so `tools/playtest-sim.js` can drive it with tiered bots (beginner / intermediate /
+  adept) at ~8,600× real time. Bots may touch **only** the virtual controls, never game
+  state directly: a harness that teleports the paddle measures nothing.
+  Its job is the measurable questions — is this winnable, how long does a level take, does
+  difficulty scale with skill — so **human playtest is spent on what only a human can
+  answer.** It does not replace human testing; every finding that mattered on rungs 2 and 3
+  came from a person playing (INV-9).
 - **Archaeology before code (added 2026-07-18).** Every rung starts with sourced research
   into the original machine and its constraints, written into `ARCHAEOLOGY.md` with a
   **Suffering Ledger** naming which constraints we KEEP (the constraint teaches something
@@ -178,6 +187,37 @@ roadblocks already earned and solved.
   hence the counter and the ending. **Brick reduction held deliberately** so the next
   playtest can attribute the effect.
 
-  **NEXT ACTION: Daniel plays it** — can wall 1 be cleared now, and does visible distance
-  change how long it feels? If it still drags, cut 8 rows → 6 (112 → 84). Then **rung 4 =
-  Galaga (1981)**, archaeology first.
+- **2026-07-18 — Rung 3 playtest 4 (Daniel scored 319, cleared most of wall 1) and the
+  simulated-playtest harness built.** His verdict: *"tense the whole time knowing the
+  rules, the labeling really helped and the speed was spot on."* Speed curve and HUD
+  **locked**. One bug he caught: the speed-up message still read `ORANGE ROW` while the
+  band was blue — same one-fact-two-homes failure as the title screen, fixed by splitting
+  historical `name` (drives 1976 logic) from displayed `label` (must match what's on screen).
+
+  **`tools/playtest-sim.js` + the sim contract, his idea:** three tiered bots so a human
+  isn't burned on first-pass testing. Verified honest — the bot moved exactly the legal
+  paddle maximum and no further. Results in `tools/SIM_RESULTS.md`:
+
+  | | Beginner | Intermediate | Adept |
+  |---|---|---|---|
+  | Clears wall 1 | 0% | 67% | 100% |
+  | Median score | 5 | 826 | 896 perfect |
+  | Time for wall 1 | never | 311 s | 309 s |
+
+  **Answering UX-22 with numbers:** wall 1 takes **~5.2 min** even played well; the full
+  two-wall game **~9–10 min**. That is ~72% over the 180 s coin-op window and above the
+  3–7 min casual band. Cutting 8 rows → 6 would land the full game near 7 min.
+  **But the sim measures length, not drag** — Daniel found the current build tense and
+  engaging, and no timing metric distinguishes those (INV-13). Brick count still held.
+
+  **The sharper finding is the floor, not the ceiling:** the beginner tier scores 5 points
+  and is dead in 16 seconds. If anything here is broken it is the newcomer experience.
+
+  **New law INV-14** — a benchmark that can return its own configuration will, and it looks
+  like data. The first sweep reported the 8-minute cap as the game length; only two tiers
+  returning the *identical* number gave it away.
+
+  **NEXT ACTION: calibrate the beginner tier against a real first-time player** (one of the
+  kids). The tiers currently do not bracket the only human data point we have — Daniel's
+  319 sits in a gap between beginner's 5 and intermediate's 826, so the tier labels are
+  asserted, not validated. Then **rung 4 = Galaga (1981)**, archaeology first.

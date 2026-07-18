@@ -201,6 +201,21 @@ This is INV-9's cousin. INV-9: a green suite proves you met your criteria, not t
 were right. INV-13: a green *metric* proves you improved what you measured, not that you
 improved what matters.
 
+### INV-14 — A benchmark that can return its own configuration will, and it looks like data
+The first simulated-playtest sweep reported `totalSeconds: 480` for both stronger tiers.
+That is not a measurement — **480 s was exactly the 8-minute cap I had set.** The bots were
+still playing when the harness cut them off, and the run silently reported the limit as if
+it were the result.
+
+It was only obvious because two independent tiers returned the *identical* number. Had the
+cap been slightly higher, or the tiers slightly different, it would have shipped as a
+finding: "a full game takes eight minutes."
+
+**The invariant:** any measurement with a ceiling must report whether the ceiling was hit,
+and every terminating condition must be distinguishable in the output. `TIMEOUT` and
+`FINISHED` are different results, and a harness that collapses them is manufacturing data.
+Suspect any benchmark whose answer resembles a number you chose.
+
 ---
 
 ## Ledger
@@ -220,6 +235,7 @@ improved what matters.
 | 11 | Reset functions are named per event, never per scope | Invaders | **the game's core tension silently deleted by one boolean** |
 | 12 | A cached step vector is stale the moment a collision changes velocity | Breakout | ball ploughed through geometry it had already bounced off |
 | 13 | A metric that doesn't replicate the user's task doesn't validate it | Breakout | measured colour separation at rest; the real task was tracking a moving ball |
+| 14 | A benchmark that can return its own configuration will, and it looks like data | Breakout | sim reported the 8-min cap as the game length |
 
 ---
 

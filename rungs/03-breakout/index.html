@@ -170,15 +170,21 @@ const BALL      = 3;
    — a different hue family entirely. Adjacent separations are now 227 / 211 /
    207, all near-maximal. This is a real fidelity cost (the 1976 band was orange)
    taken deliberately for legibility. A-10. */
+/* `name` is the HISTORICAL band identity and drives the 1976 trigger logic.
+   `label` is what the player is told, and must match what they can SEE.
+   Playtest 2026-07-18: after recolouring the orange band blue, the speed-up
+   message still announced "ORANGE ROW" while the player was looking at a blue
+   row. Same one-fact-two-homes failure as the title screen earlier — the fix is
+   to make the display string a separate field, not a reused identity. */
 const ROW_DEF = [
-  { col: TI.mediumRed,   pts: 7, name:'red'    },
-  { col: TI.mediumRed,   pts: 7, name:'red'    },
-  { col: TI.darkBlue,    pts: 5, name:'orange' },
-  { col: TI.darkBlue,    pts: 5, name:'orange' },
-  { col: TI.mediumGreen, pts: 3, name:'green'  },
-  { col: TI.mediumGreen, pts: 3, name:'green'  },
-  { col: TI.lightYellow, pts: 1, name:'yellow' },
-  { col: TI.lightYellow, pts: 1, name:'yellow' }
+  { col: TI.mediumRed,   pts: 7, name:'red',    label:'RED ROW'  },
+  { col: TI.mediumRed,   pts: 7, name:'red',    label:'RED ROW'  },
+  { col: TI.darkBlue,    pts: 5, name:'orange', label:'BLUE ROW' },
+  { col: TI.darkBlue,    pts: 5, name:'orange', label:'BLUE ROW' },
+  { col: TI.mediumGreen, pts: 3, name:'green',  label:'GREEN ROW'},
+  { col: TI.mediumGreen, pts: 3, name:'green',  label:'GREEN ROW'},
+  { col: TI.lightYellow, pts: 1, name:'yellow', label:'YELLOW ROW'},
+  { col: TI.lightYellow, pts: 1, name:'yellow', label:'YELLOW ROW'}
 ];
 
 /* ---- Speed table (1976 authored curve) -------------------------------
@@ -321,10 +327,16 @@ bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
 bindTap('bT', () => toTitle());
 bindTap('bM', () => Sound.toggle());
 
+/* Virtual input channel for the simulated-playtest harness. A bot drives THESE
+   and nothing else — it cannot set paddleX directly, so it is bound by exactly
+   the same paddle speed and clamping a human is. A harness that teleports the
+   paddle isn't measuring the game, it's measuring nothing. */
+const simInput = { left:false, right:false, fire:false };
+
 const held = {
-  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left,
-  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right,
-  fire:  () => keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] || touch.fire
+  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right || simInput.right,
+  fire:  () => keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] || touch.fire || simInput.fire
 };
 
 /* ---- Speed curve ------------------------------------------------------ */
@@ -359,9 +371,9 @@ function smashBrick(b) {
   b.alive = false;
   game.score += ROW_DEF[b.row].pts;
   Sound.brick(b.row);
-  const name = ROW_DEF[b.row].name;
-  if (name === 'orange' && !game.hitOrange) { game.hitOrange = true; bumpSpeed('ORANGE ROW'); }
-  if (name === 'red'    && !game.hitRed)    { game.hitRed    = true; bumpSpeed('RED ROW'); }
+  const def = ROW_DEF[b.row];
+  if (def.name === 'orange' && !game.hitOrange) { game.hitOrange = true; bumpSpeed(def.label); }
+  if (def.name === 'red'    && !game.hitRed)    { game.hitRed    = true; bumpSpeed(def.label); }
 }
 
 function stepBall(dt) {
@@ -608,7 +620,32 @@ window.__breakout = {
   get paddleW(){ return game.paddleW; },
   get entities(){ return game.bricks.length + (game.ball ? 1 : 0); },
   game, newGame, newLevel, newBall, launch, toTitle, Sound,
-  SPEED, ROW_DEF, geom: { W, H, WALL, PLAY_L, PLAY_R, CEIL, COLS, ROWS,
-                          BRICK_W, BRICK_H, BRICK_TOP, PADDLE_Y, PADDLE_FULL, BALL }
+  SPEED, ROW_DEF, MAX_WALLS, PERFECT,
+  geom: { W, H, WALL, PLAY_L, PLAY_R, CEIL, COLS, ROWS,
+          BRICK_W, BRICK_H, BRICK_TOP, PADDLE_Y, PADDLE_FULL, PADDLE_H, BALL,
+          PADDLE_SPEED: 0.13 },
+
+  /* ---- SIM CONTRACT -------------------------------------------------
+     The standard interface every rung in this repo implements so one
+     harness (tools/playtest-sim.js) can drive any of them.
+       input      virtual controls; the ONLY way a bot may act
+       step(dt)   advance the simulation one tick WITHOUT rendering, so a
+                  run executes thousands of times faster than real time
+       observe()  read-only snapshot for scoring a run                   */
+  sim: {
+    input: simInput,
+    step(dt) { update(dt); },
+    reset() { simInput.left = simInput.right = simInput.fire = false; },
+    observe() {
+      return {
+        state: game.state, score: game.score, level: game.level,
+        balls: game.balls, bricksAlive: game.bricks.filter(b => b.alive).length,
+        speedStep: game.speedStep, paddleW: game.paddleW, paddleX: game.paddleX,
+        brokeThrough: game.brokeThrough,
+        ball: game.ball ? { x: game.ball.x, y: game.ball.y,
+                            vx: game.ball.vx, vy: game.ball.vy } : null
+      };
+    }
+  }
 };
 </script>

@@ -41,6 +41,11 @@ Rungs are numbered by build order, not strictly by year — Breakout is a backfi
   so each one is a live choice: KEEP (the constraint teaches something you can't get from
   reading) or SKIP (tedium, not insight). Keeping all of them is cosplay; skipping all of
   them means learning nothing about why any of it is shaped the way it is.
+- **Sim first, human second.** Every rung implements the sim contract so tiered bots can
+  answer the measurable questions — winnable? how long? does difficulty scale? — at ~8,600×
+  real time. Bots may only touch the virtual controls, never game state, so they are bound
+  by the same paddle speed a person is. **This does not replace human playtest**; it clears
+  the runway so a human is spent on what only a human can judge.
 - **One HTML file per game.** Vanilla JS, Canvas 2D, zero dependencies, no build step.
   A game you can't open by double-clicking is a game nobody will ever repair.
 - **Build for repair, not forever.** If a near-beginner can't open it and change
@@ -59,6 +64,9 @@ INVARIANTS.md          laws earned across every rung
 UX_DECISIONS.md        design choices, tradeoffs, re-pick triggers
 ARCHAEOLOGY.md         the original machines, what they forced, the Suffering Ledger
 index.html             landing page (GitHub Pages) linking every playable rung
+tools/
+  playtest-sim.js      tiered simulated players (beginner/intermediate/adept)
+  SIM_RESULTS.md       their measured results vs the researched criteria
 rungs/
   02-invaders/
     index.html         the game — the only file you need to play or share
