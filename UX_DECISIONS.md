@@ -273,6 +273,61 @@ So "112 bricks is too many to clear" measures the game against a goal it never h
 drags, cut rows 8 → 6 (112 → 84 bricks, 336/wall) and we will *know* it was content
 length rather than opacity. **Daniel's call after the next playtest.**
 
+### UX-23 — touch layout rebuilt for kids' hands — 2026-07-18 [LUCIUS, age 9]
+
+The first playtest by an actual child, and the most specific feedback of the project:
+
+> *"Dad this is for kids not adults and our hands aren't that big."*
+
+Two problems, both real, both mine:
+
+**1. The movement arrows were too close together.** He plays on a tablet held two-handed
+with a thumb at each edge — the arrows have to be *at those edges*. Mine were clustered
+centrally. Worse, they had been shipping at less than half the intended width for a
+layout reason nobody had measured (INV-17).
+
+| | Before | After |
+|---|---|---|
+| Distance from screen edge | 245 px | **10 px** |
+| Separation between arrows | 155 px (17%) | **521 px (57%)** |
+| Button size | 104×56 | **190×76** |
+
+**2. PAUSE / TITLE / SOUND sat next to the arrows and got hit by accident.** Moved
+**above the canvas** — thumbs live at the bottom of a tablet, so the top edge is the safe
+home for controls you rarely want and never want by mistake. They are now 540 px away
+from the nearest arrow instead of adjacent.
+
+**3. Consequence of fixing (1): the centre FIRE button became unreachable** for a thumb
+resting on an edge arrow. So **tapping the play area anywhere now fires**. The button
+stays for anyone who prefers it.
+
+Applied to **both** rungs, since Invaders had the identical layout.
+
+**The general rule this earns:** the person with the smallest hands is the best reviewer
+of a touch layout, and an adult testing with two free hands and a mouse will never find
+these. Children are not a lesser test case here — for this project they are the *primary*
+one, and Lucius found in five minutes what I had shipped past twice.
+
+### UX-24 — Invaders: aliens hold position through a death — CONFIRMED CORRECT
+
+Lucius asked whether the aliens reset to the top when you lose a life, reasoning that if
+they were near the bottom you'd be dead on arrival. Verified in-build:
+
+| Behaviour | Result |
+|---|---|
+| Aliens on losing a life | **Hold position exactly** (166 → 166); kills preserved |
+| Aliens reaching the player's line | **Instant game over, even with lives remaining** |
+| New wave | Resets to the top, but starts progressively lower each wave |
+
+All three match the 1978 original — the rack persisting through your death *is* the
+pressure, exactly like Breakout's wall. His instinct that it can feel unwinnable is
+correct and it is the intended feeling.
+
+**Open for Daniel, since A-11 applies:** that difficulty was tuned for a coin slot we
+don't have. If the kids find it discouraging rather than tense, the mercy option is to
+push the formation up a row or two on respawn — a deliberate, declared anachronism like
+the high score table. Not doing it unilaterally.
+
 ### UX-20 — breakthrough now spikes to max speed — NEW 2026-07-18 (fidelity fix)
 
 Chasing the reset question surfaced a documented 1976 rule I had only half-implemented:

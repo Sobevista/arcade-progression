@@ -249,6 +249,25 @@ would have shipped, because nothing about the game's behaviour was affected.
 carries an encoding round-trip that is invisible in the diff you were looking at, silent at
 runtime, and permanent. The blast radius of a tool is not limited to the thing you aimed it at.
 
+### INV-17 — Layout intent is not layout fact. Measure the rendered box.
+The touch control row was written as `width: 100%` and had been shipping at **448 px on a
+921 px screen** — less than half the width it claimed. Nobody noticed because it *looked*
+deliberate: a centred row of buttons.
+
+Cause: a selector list. `html, body { display:flex; align-items:center }` applied the
+declaration to **both**, so `<html>` became a flex container and `<body>` became a centred
+flex *item* that shrank to its content. `width:100%` then resolved against a body that was
+already too narrow. Every "full width" element inherited the lie.
+
+It only surfaced when a 9-year-old said the buttons were too close together to reach with
+two thumbs, and I measured the rendered rectangles instead of trusting the CSS.
+
+**The invariant:** for any layout claim that matters — full width, edge-anchored, minimum
+touch target — read back `getBoundingClientRect()` and assert on the number. CSS expresses
+intent; only the rendered box is fact. And a selector list applies every declaration to
+every selector: check that each one is sensible for *each* element, not just the one you
+were thinking about.
+
 ---
 
 ## Ledger
@@ -271,6 +290,7 @@ runtime, and permanent. The blast radius of a tool is not limited to the thing y
 | 14 | A benchmark that can return its own configuration will, and it looks like data | Breakout | sim reported the 8-min cap as the game length |
 | 15 | Modal states define their own bindings, and assume every button is already held | Breakout | "DAN" saved as "ADA"; WASD aliases spun the letter wheel |
 | 16 | Never text-process source files with the shell when an edit tool exists | Breakout | PowerShell re-encode corrupted 29 em dashes, silently |
+| 17 | Layout intent is not layout fact — measure the rendered box | Breakout + Invaders | "width:100%" was shipping at 448px of 921px |
 
 ---
 

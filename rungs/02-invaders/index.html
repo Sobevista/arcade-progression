@@ -4,38 +4,53 @@
 
 <style>
   :root { --ti-black:#000000; --ti-gray:#CCCCCC; }
-  html,body {
-    margin:0; height:100%; background:var(--ti-black); color:var(--ti-gray);
+  /* html must NOT be a flex container — see the note in rung 3. When it was,
+     <body> became a centered flex ITEM and shrank to its content width, so any
+     "full width" control row silently wasn't. */
+  html { margin:0; height:100%; }
+  body {
+    margin:0; min-height:100%; width:100%; box-sizing:border-box;
+    background:var(--ti-black); color:var(--ti-gray);
     font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:12px; overflow:hidden; touch-action:none; user-select:none;
   }
   canvas { image-rendering:pixelated; display:block; }
-  #pad, #pad2 { display:none; gap:10px; }
-  #pad button {
-    width:88px; height:56px; font:inherit; font-size:20px;
-    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:8px;
-  }
-  #pad2 button {
-    width:88px; height:34px; font:inherit; font-size:12px;
-    background:#0a0a0a; color:#888; border:2px solid #262626; border-radius:8px;
-  }
+  #pad, #pad2 { display:none; }
+
+  /* Playtest 2026-07-18, Lucius (9): "this is for kids not adults and our hands
+     aren't that big" — movement arrows moved to the OUTER EDGES so a thumb on
+     each side of a tablet reaches them without regripping. */
+  /* No max-width: the arrows must reach the physical edges of a tablet, not sit
+     inside a centred column. See the note in rung 3. */
+  #pad { width:100%; justify-content:space-between;
+         padding:0 10px; box-sizing:border-box; gap:8px; }
+  #pad button { flex:1 1 0; max-width:190px; height:76px;
+    font:inherit; font-size:24px;
+    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:12px; }
+
+  /* Same playtest: PAUSE/TITLE/SOUND were close enough to the arrows to be hit
+     by accident. Moved ABOVE the canvas, away from where thumbs rest. */
+  #pad2 { gap:8px; margin-bottom:4px; }
+  #pad2 button { width:78px; height:30px; font:inherit; font-size:11px;
+    background:#0a0a0a; color:#777; border:2px solid #242424; border-radius:8px; }
+
   #pad button:active, #pad2 button:active { background:#222; }
   body.touch #pad, body.touch #pad2 { display:flex; }
   #hint { font-size:12px; color:#555; letter-spacing:1px; }
   body.touch #hint { display:none; }
 </style>
 
+<div id="pad2">
+  <button id="bP" aria-label="pause">PAUSE</button>
+  <button id="bT" aria-label="title">TITLE</button>
+  <button id="bM" aria-label="sound">SOUND</button>
+</div>
 <canvas id="screen"></canvas>
 <div id="pad">
   <button id="bL" aria-label="left">&#9664;</button>
   <button id="bF" aria-label="fire">FIRE</button>
   <button id="bR" aria-label="right">&#9654;</button>
-</div>
-<div id="pad2">
-  <button id="bP" aria-label="pause">PAUSE</button>
-  <button id="bT" aria-label="title">TITLE</button>
-  <button id="bM" aria-label="sound">SOUND</button>
 </div>
 <div id="hint">&larr; &rarr; MOVE &nbsp;&middot;&nbsp; SPACE FIRE &nbsp;&middot;&nbsp; P PAUSE &nbsp;&middot;&nbsp; M SOUND &nbsp;&middot;&nbsp; ESC TITLE</div>
 
@@ -119,7 +134,8 @@ let scale = 1;
 function fit() {
   // Integer scaling only — fractional scaling is what makes pixel art mushy.
   const availW = window.innerWidth  - 16;
-  const availH = window.innerHeight - (document.body.classList.contains('touch') ? 130 : 60);
+  // taller allowance on touch: control row above (34) + below (80) + gaps
+  const availH = window.innerHeight - (document.body.classList.contains('touch') ? 150 : 60);
   scale = Math.max(1, Math.floor(Math.min(availW / W, availH / H)));
   cv.width = W; cv.height = H;
   cv.style.width  = (W * scale) + 'px';
@@ -258,6 +274,15 @@ function bindTap(id, fn) {
   el.addEventListener('touchstart', h, {passive:false});
   el.addEventListener('click', h);
 }
+/* Tap the play area to fire. With the arrows pushed out to the tablet's edges
+   (Lucius's request), the centre FIRE button is the one thing a thumb resting
+   on an arrow can't reach — so the whole screen is a fire button too. */
+(() => {
+  const fire = e => { e.preventDefault(); Sound.unlock();
+    touch.fire = true; setTimeout(() => { touch.fire = false; }, 90); };
+  cv.addEventListener('touchstart', fire, { passive:false });
+})();
+
 bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
 bindTap('bT', () => toTitle());
 bindTap('bM', () => Sound.toggle());

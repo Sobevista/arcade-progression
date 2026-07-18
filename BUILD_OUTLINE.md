@@ -217,7 +217,40 @@ roadblocks already earned and solved.
   like data. The first sweep reported the 8-minute cap as the game length; only two tiers
   returning the *identical* number gave it away.
 
-  **NEXT ACTION: calibrate the beginner tier against a real first-time player** (one of the
-  kids). The tiers currently do not bracket the only human data point we have — Daniel's
-  319 sits in a gap between beginner's 5 and intermediate's 826, so the tier labels are
-  asserted, not validated. Then **rung 4 = Galaga (1981)**, archaeology first.
+- **2026-07-18 — Family playtest: high score table, and the touch layout rebuilt by a
+  9-year-old.** Real scores in: Daniel **319**, Lucius (9) **12 → 13 → 37**, Mum **21**,
+  the 6-year-old **4, 4, 5, 7**.
+
+  **Sim calibration result: the beginner tier was never wrong, it was mislabelled.** Bot
+  beginner median **5**, range **4–7**; the six-year-old scored **4, 4, 5, 7** — the same
+  distribution. What's wrong is the ladder above it: `intermediate` (826) and `adept` (896
+  perfect, zero balls lost) are beyond any human measured, leaving **a hole exactly where
+  every real player lives**. Proposed relabel to `firstTimer / novice / competent / expert
+  / ceiling` with two tiers to build. Also noted: Lucius improved **3× across three
+  attempts**, and no bot tier models learning at all.
+
+  **High score table shipped** (8 entries, 3-letter initials, `arcade.<game>.scores`),
+  protocol in `tools/hiscore.js`. Declared anachronism — initials entry didn't exist until
+  **Star Fire, 1979** (A-12); imported backwards because the competitive loop is what
+  brings kids back. Three new laws from building it: **INV-15** (modal states own their
+  bindings and must assume every button is already held — "DAN" saved as "ADA"),
+  **INV-16** (never shell-text-process source files — a PowerShell pass silently corrupted
+  29 em dashes), **INV-17** (layout intent is not layout fact).
+
+  **Lucius's layout feedback, verbatim: *"Dad this is for kids not adults and our hands
+  aren't that big."*** Arrows moved to the physical screen edges (245 px inboard → **10 px**;
+  separation 155 px → **521 px**), buttons enlarged 104×56 → 190×76, and PAUSE/TITLE/SOUND
+  moved **above the canvas** after he reported hitting them by accident. Fixing the reach
+  problem made the centre FIRE button unreachable, so **tapping the play area now fires**.
+  Applied to both rungs. Root cause of the width bug was INV-17 — the control row had been
+  shipping at 448 px on a 921 px screen because a selector list made `<body>` a shrunken
+  flex item.
+
+  **Also confirmed for Lucius:** Invaders aliens **hold position through a death** (they do
+  not reset), and reaching the player's line is an instant game over even with lives left.
+  Both match 1978. Whether to soften it for kids is Daniel's call (UX-24) — A-11 says that
+  difficulty was tuned for a coin slot we don't have.
+
+  **NEXT ACTION: port the high score table to rung 2 (Invaders)** — the kids are competing
+  on it and it still has only a single stored high score. Then build the two missing sim
+  tiers, and **rung 4 = Galaga (1981)**, archaeology first.
