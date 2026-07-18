@@ -1,0 +1,1027 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>HUNT THE WUMPUS — rung 5</title>
+
+<style>
+  :root { --ti-black:#000000; --ti-gray:#CCCCCC; }
+  /* html must NOT be a flex container — see the note in rung 3 (INV-17). */
+  html { margin:0; height:100%; }
+  body {
+    margin:0; min-height:100%; width:100%; box-sizing:border-box;
+    background:var(--ti-black); color:var(--ti-gray);
+    font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; overflow:hidden; touch-action:none; user-select:none;
+  }
+  canvas { image-rendering:pixelated; display:block; }
+  #pad, #pad2 { display:none; }
+
+  /* Touch layout per the shared contract (Lucius's ruling, 2026-07-18):
+     movement at the physical screen edges, secondary buttons ABOVE the canvas,
+     big targets. Wumpus needs 4 directions, so the row is L U F D R. */
+  #pad { width:100%; justify-content:space-between;
+         padding:0 10px; box-sizing:border-box; gap:8px; }
+  #pad button { flex:1 1 0; max-width:190px; height:76px;
+    font:inherit; font-size:24px;
+    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:12px; }
+
+  #pad2 { gap:8px; margin-bottom:4px; }
+  #pad2 button { width:78px; height:30px; font:inherit; font-size:11px;
+    background:#0a0a0a; color:#777; border:2px solid #242424; border-radius:8px; }
+
+  #pad button:active, #pad2 button:active { background:#222; }
+  body.touch #pad, body.touch #pad2 { display:flex; }
+  #hint { font-size:12px; color:#555; letter-spacing:1px; }
+  body.touch #hint { display:none; }
+
+  /* Feedback overlay — shared contract pilot (rung 5). A DOM modal, because
+     typing needs a real textarea. Owns its input entirely (INV-15). */
+  #fb { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.86);
+        z-index:10; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+  #fb.open { display:flex; }
+  #fb .box { width:min(92vw,420px); background:#0a0a0a; border:2px solid #333;
+             border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  #fb h2 { margin:0; font-size:14px; color:var(--ti-gray); letter-spacing:1px; }
+  #fb textarea { width:100%; box-sizing:border-box; height:110px; resize:none;
+                 background:#000; color:var(--ti-gray); border:1px solid #333;
+                 border-radius:6px; font:inherit; font-size:13px; padding:8px; }
+  #fb .ctx { font-size:10px; color:#555; white-space:pre-wrap; }
+  #fb .row { display:flex; gap:8px; }
+  #fb .row button { flex:1; height:40px; font:inherit; font-size:12px;
+                    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:8px; }
+  #fb .row button:active { background:#222; }
+  #fb .note { font-size:10px; color:#4a4; min-height:12px; }
+</style>
+
+<div id="pad2">
+  <button id="bP" aria-label="pause">PAUSE</button>
+  <button id="bT" aria-label="title">TITLE</button>
+  <button id="bM" aria-label="sound">SOUND</button>
+  <button id="bFB" aria-label="feedback">FEEDBACK</button>
+</div>
+<canvas id="screen"></canvas>
+<div id="pad">
+  <button id="bL" aria-label="left">&#9664;</button>
+  <button id="bU" aria-label="up">&#9650;</button>
+  <button id="bF" aria-label="fire">FIRE</button>
+  <button id="bD" aria-label="down">&#9660;</button>
+  <button id="bR" aria-label="right">&#9654;</button>
+</div>
+<div id="hint">ARROWS MOVE &nbsp;&middot;&nbsp; SPACE AIM &nbsp;&middot;&nbsp; F FEEDBACK &nbsp;&middot;&nbsp; M SOUND &nbsp;&middot;&nbsp; ESC TITLE</div>
+
+<div id="fb">
+  <div class="box">
+    <h2>REPORT / FEEDBACK</h2>
+    <textarea id="fbText" placeholder="What did you see? What felt wrong or great?"></textarea>
+    <div class="ctx" id="fbCtx"></div>
+    <div class="row">
+      <button id="fbGh">SEND TO GITHUB</button>
+      <button id="fbCopy">COPY REPORT</button>
+      <button id="fbClose">CLOSE</button>
+    </div>
+    <div class="note" id="fbNote"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   HUNT THE WUMPUS — rung 5a of the progression. TI-99/4A original: Kevin
+   Kenney, 1980. Single file, vanilla JS, Canvas 2D, zero dependencies.
+   Palette: TMS9918A — on this rung the palette is not just the homage, it
+   is the subject machine.
+
+   The rung's thesis (ARCHAEOLOGY A-20): a deduction game — the core loop is
+   inference from clues, not reflexes. Sourced rules (4A-Pedia): wrapping
+   grid maze, bloodspots within TWO tunnels of the wumpus, green walls
+   adjacent to slime pits, bats relocate you, ONE arrow — hit wins, miss
+   loses. Bat-adjacency squeak is [ASSUMED], mirroring Yob 1973.
+   ========================================================================= */
+
+/* ---- TI-99/4A palette (TMS9918A) ------------------------------------- */
+const TI = {
+  black:'#000000', mediumGreen:'#21C842', lightGreen:'#5EDC78',
+  darkBlue:'#5455ED', lightBlue:'#7D76FC', darkRed:'#D4524D',
+  cyan:'#42EBF5',    mediumRed:'#FC5554',  lightRed:'#FF7978',
+  darkYellow:'#D4C154', lightYellow:'#E6CE80', darkGreen:'#21B03B',
+  magenta:'#C95BBA', gray:'#CCCCCC', white:'#FFFFFF'
+};
+
+/* ---- Sound: synthesised, zero assets ---------------------------------- */
+const Sound = (() => {
+  let ac = null, muted = false;
+  const ctx = () => ac || (ac = new (window.AudioContext || window.webkitAudioContext)());
+  function tone({ freq, to = null, dur = 0.1, type = 'square', vol = 0.12, at = 0 }) {
+    if (muted || !ac) return;
+    const c = ac, t0 = c.currentTime + at;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    if (to !== null) o.frequency.linearRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  return {
+    unlock() { const c = ctx(); if (c.state === 'suspended') c.resume(); },
+    toggle() { muted = !muted; return muted; },
+    get muted() { return muted; },
+    step()   { tone({ freq: 220, dur: 0.05, type: 'square', vol: 0.05 }); },
+    wall()   { tone({ freq: 110, dur: 0.08, type: 'square', vol: 0.06 }); },
+    bat()    { [900,700,1000,650].forEach((f,i) =>
+                 tone({ freq:f, to:f-160, dur:0.09, type:'triangle', vol:0.09, at:i*0.08 })); },
+    pit()    { tone({ freq: 500, to: 40, dur: 0.9, type: 'sawtooth', vol: 0.14 }); },
+    wumpus() { tone({ freq: 90, to: 45, dur: 0.8, type: 'sawtooth', vol: 0.2 });
+               tone({ freq: 140, to: 60, dur: 0.8, type: 'square', vol: 0.1 }); },
+    aim()    { tone({ freq: 660, dur: 0.06, type: 'square', vol: 0.07 }); },
+    arrow()  { tone({ freq: 1400, to: 300, dur: 0.25, type: 'sawtooth', vol: 0.1 }); },
+    win()    { [523,659,784,1047,1319].forEach((f,i) =>
+                 tone({ freq:f, dur:0.12, type:'square', vol:0.1, at:i*0.11 })); },
+    lose()   { [392,330,262,196].forEach((f,i) =>
+                 tone({ freq:f, dur:0.16, type:'square', vol:0.1, at:i*0.14 })); }
+  };
+})();
+
+/* ---- Logical screen — series portrait raster -------------------------- */
+const W = 224, H = 288;
+const cv = document.getElementById('screen');
+const cx = cv.getContext('2d', { alpha:false });
+
+let scale = 1;
+function fit() {
+  const availW = window.innerWidth  - 16;
+  const availH = window.innerHeight - (document.body.classList.contains('touch') ? 150 : 60);
+  scale = Math.max(1, Math.floor(Math.min(availW / W, availH / H)));   // INV-7
+  cv.width = W; cv.height = H;
+  cv.style.width  = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cx.imageSmoothingEnabled = false;
+}
+if (matchMedia('(hover: none)').matches) document.body.classList.add('touch');
+addEventListener('resize', fit);
+fit();
+
+/* ---- 5x7 font (shared glyph set) -------------------------------------- */
+const GLYPHS = {
+ '0':'11111 10001 10001 10001 10001 10001 11111','1':'00100 01100 00100 00100 00100 00100 01110',
+ '2':'11111 00001 00001 11111 10000 10000 11111','3':'11111 00001 00001 11111 00001 00001 11111',
+ '4':'10001 10001 10001 11111 00001 00001 00001','5':'11111 10000 10000 11111 00001 00001 11111',
+ '6':'11111 10000 10000 11111 10001 10001 11111','7':'11111 00001 00010 00100 01000 01000 01000',
+ '8':'11111 10001 10001 11111 10001 10001 11111','9':'11111 10001 10001 11111 00001 00001 11111',
+ 'A':'01110 10001 10001 11111 10001 10001 10001','B':'11110 10001 10001 11110 10001 10001 11110',
+ 'C':'01111 10000 10000 10000 10000 10000 01111','D':'11110 10001 10001 10001 10001 10001 11110',
+ 'E':'11111 10000 10000 11110 10000 10000 11111','F':'11111 10000 10000 11110 10000 10000 10000',
+ 'G':'01111 10000 10000 10111 10001 10001 01111','H':'10001 10001 10001 11111 10001 10001 10001',
+ 'I':'11111 00100 00100 00100 00100 00100 11111','J':'00011 00001 00001 00001 00001 10001 01110',
+ 'K':'10001 10010 10100 11000 10100 10010 10001','L':'10000 10000 10000 10000 10000 10000 11111',
+ 'M':'10001 11011 10101 10101 10001 10001 10001','N':'10001 11001 10101 10011 10001 10001 10001',
+ 'O':'01110 10001 10001 10001 10001 10001 01110','P':'11110 10001 10001 11110 10000 10000 10000',
+ 'Q':'01110 10001 10001 10001 10101 10010 01101','R':'11110 10001 10001 11110 10100 10010 10001',
+ 'S':'01111 10000 10000 01110 00001 00001 11110','T':'11111 00100 00100 00100 00100 00100 00100',
+ 'U':'10001 10001 10001 10001 10001 10001 01110','V':'10001 10001 10001 10001 10001 01010 00100',
+ 'W':'10001 10001 10001 10101 10101 11011 10001','X':'10001 01010 00100 00100 00100 01010 10001',
+ 'Y':'10001 01010 00100 00100 00100 00100 00100','Z':'11111 00001 00010 00100 01000 10000 11111',
+ ' ':'00000 00000 00000 00000 00000 00000 00000','-':'00000 00000 00000 11111 00000 00000 00000',
+ '<':'00010 00100 01000 10000 01000 00100 00010','>':'01000 00100 00010 00001 00010 00100 01000',
+ ':':'00000 00100 00100 00000 00100 00100 00000','!':'00100 00100 00100 00100 00100 00000 00100',
+ '.':'00000 00000 00000 00000 00000 00000 00100','/':'00001 00010 00010 00100 01000 01000 10000',
+ '?':'01110 10001 00001 00110 00100 00000 00100'
+};
+function text(str, x, y, color) {
+  cx.fillStyle = color;
+  let px = x;
+  for (const ch of str.toUpperCase()) {
+    const g = GLYPHS[ch] || GLYPHS[' '];
+    g.split(' ').forEach((row, r) => {
+      for (let c = 0; c < 5; c++) if (row[c] === '1') cx.fillRect(px + c, y + r, 1, 1);
+    });
+    px += 6;
+  }
+}
+const textW = s => s.length * 6 - 1;
+const center = (s, y, color) => text(s, ((W - textW(s)) / 2) | 0, y, color);
+
+/* ---- Sprites ----------------------------------------------------------- */
+function sprite(rows) {
+  return { w: rows[0].length, h: rows.length,
+           bits: rows.map(r => [...r].map(c => c === 'X' ? 1 : 0)) };
+}
+const HUNTER = sprite([
+  '..XXX..','..XXX..','...X...','.XXXXX.','X..X..X','...X...','..X.X..','..X.X..','.X...X.']);
+const WUMP = sprite([
+  '.XX...XX.','X..XXX..X','X.XXXXX.X','XXX.X.XXX','XXXXXXXXX','.XXXXXXX.','.X.X.X.X.','X..X.X..X']);
+const BATSPR = sprite([
+  'X...X...X','XX.XXX.XX','XXXXXXXXX','.XX.X.XX.','....X....']);
+const ARROWSPR = sprite(['XX','XX']);
+
+function draw(s, x, y, color) {
+  cx.fillStyle = color;
+  for (let r = 0; r < s.h; r++)
+    for (let c = 0; c < s.w; c++)
+      if (s.bits[r][c]) cx.fillRect((x|0) + c, (y|0) + r, 1, 1);
+}
+
+/* ---- Input ------------------------------------------------------------- */
+const keys = Object.create(null);
+addEventListener('keydown', e => {
+  if (Feedback.isOpen) {                     // the modal owns its input (INV-15)
+    if (e.key === 'Escape') Feedback.close();
+    return;
+  }
+  if ([' ','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  Sound.unlock();
+  if (e.key === 'p' || e.key === 'P') { if (game.state === 'play' || game.state === 'aim') game.paused = !game.paused; }
+  if (e.key === 'm' || e.key === 'M') Sound.toggle();
+  if (e.key === 'f' || e.key === 'F') Feedback.open();
+  if (e.key === 'Escape') {
+    if (game.state === 'aim') { game.state = 'play'; }
+    else toTitle();
+  }
+  if (game.state === 'entry' && game.entry) {
+    const up = e.key.toUpperCase();
+    if (up.length === 1 && LETTERS.includes(up)) {
+      game.entry.chars[game.entry.slot] = LETTERS.indexOf(up);
+      advanceEntry();
+    } else if (e.key === 'Backspace' && game.entry.slot > 0) {
+      game.entry.slot--;
+    }
+  }
+});
+addEventListener('keyup', e => { if (Feedback.isOpen) return; keys[e.key] = false; });
+
+function toTitle() {
+  if (game.state === 'title') return;
+  game.paused = false;
+  game.entry = null;
+  game.state = 'title';
+}
+
+const touch = { left:false, right:false, up:false, down:false, fire:false };
+function bindPad(id, prop) {
+  const el = document.getElementById(id);
+  const on  = e => { e.preventDefault(); Sound.unlock(); touch[prop] = true;  };
+  const off = e => { e.preventDefault(); touch[prop] = false; };
+  el.addEventListener('touchstart', on,  {passive:false});
+  el.addEventListener('touchend',   off, {passive:false});
+  el.addEventListener('touchcancel',off, {passive:false});
+  el.addEventListener('mousedown',  on);
+  el.addEventListener('mouseup',    off);
+  el.addEventListener('mouseleave', off);
+}
+bindPad('bL','left'); bindPad('bR','right'); bindPad('bU','up');
+bindPad('bD','down'); bindPad('bF','fire');
+
+function bindTap(id, fn) {
+  const el = document.getElementById(id);
+  const h = e => { e.preventDefault(); Sound.unlock(); fn(); };
+  el.addEventListener('touchstart', h, {passive:false});
+  el.addEventListener('click', h);
+}
+
+/* ---- SWIVEL STICK (touch) — shared contract. Wumpus extends it to two
+   axes: the origin is wherever the thumb lands, tilt past the deadzone
+   reads as a held direction. Right half = fire. ------------------------- */
+const Stick = (() => {
+  const DEAD = 9;
+  let stickId = null, ox = 0, oy = 0, cxp = 0, cyp = 0, fireId = null;
+  const state = { active:false, ox:0, dx:0, dy:0 };
+  function apply() {
+    const dx = cxp - ox, dy = cyp - oy;
+    state.dx = dx; state.dy = dy;
+    touch.left  = state.active && dx < -DEAD && Math.abs(dx) >= Math.abs(dy);
+    touch.right = state.active && dx >  DEAD && Math.abs(dx) >= Math.abs(dy);
+    touch.up    = state.active && dy < -DEAD && Math.abs(dy) >  Math.abs(dx);
+    touch.down  = state.active && dy >  DEAD && Math.abs(dy) >  Math.abs(dx);
+  }
+  function start(e) {
+    const r = cv.getBoundingClientRect();
+    for (const t of e.changedTouches) {
+      const leftHalf = (t.clientX - r.left) < r.width / 2;
+      if (leftHalf && stickId === null) {
+        stickId = t.identifier; ox = cxp = t.clientX; oy = cyp = t.clientY;
+        state.active = true; state.ox = t.clientX - r.left;
+      } else if (!leftHalf && fireId === null) {
+        fireId = t.identifier; touch.fire = true;
+      }
+    }
+    apply(); e.preventDefault(); Sound.unlock();
+  }
+  function move(e) {
+    for (const t of e.changedTouches) if (t.identifier === stickId) { cxp = t.clientX; cyp = t.clientY; }
+    apply(); e.preventDefault();
+  }
+  function end(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = null; state.active = false;
+                                      touch.left = touch.right = touch.up = touch.down = false; }
+      if (t.identifier === fireId)  { fireId = null; touch.fire = false; }
+    }
+    apply();
+  }
+  cv.addEventListener('touchstart',  start, { passive:false });
+  cv.addEventListener('touchmove',   move,  { passive:false });
+  cv.addEventListener('touchend',    end,   { passive:false });
+  cv.addEventListener('touchcancel', end,   { passive:false });
+  return state;
+})();
+
+bindTap('bP', () => { if (game.state === 'play' || game.state === 'aim') game.paused = !game.paused; });
+bindTap('bT', () => toTitle());
+bindTap('bM', () => Sound.toggle());
+bindTap('bFB', () => Feedback.open());
+
+/* Virtual input for the sim harness — bots drive THESE and nothing else. */
+const simInput = { left:false, right:false, up:false, down:false, fire:false };
+
+const held = {
+  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right || simInput.right,
+  up:    () => keys['ArrowUp']    || keys['w'] || keys['W'] || touch.up    || simInput.up,
+  down:  () => keys['ArrowDown']  || keys['s'] || keys['S'] || touch.down  || simInput.down,
+  fire:  () => keys[' '] || keys['Enter'] || touch.fire || simInput.fire
+};
+
+/* ---- HIGH SCORE TABLE — shared protocol (tools/hiscore.js) ------------ */
+const HiScore = (() => {
+  const KEY = 'arcade.wumpus.scores', MAX = 8;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+                       catch (e) { return []; } };
+  const store = l => { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} };
+  return {
+    list: load,
+    qualifies(score) {
+      if (score <= 0) return false;
+      const l = load();
+      return l.length < MAX || score > l[l.length - 1].s;
+    },
+    add(name, score) {
+      const l = load();
+      l.push({ n: name, s: score, d: new Date().toISOString().slice(0, 10) });
+      l.sort((a, b) => b.s - a.s);
+      const cut = l.slice(0, MAX);
+      store(cut);
+      return cut.findIndex(e => e.s === score && e.n === name) + 1;
+    },
+    clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  };
+})();
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';   // no space: space confirms (INV-15)
+function topScore() { const l = HiScore.list(); return l.length ? l[0].s : 0; }
+try { localStorage.removeItem('wumpus.high'); } catch (e) {}   // one fact, one home
+
+/* =========================================================================
+   MAZE — wrapping grid of caverns joined by tunnels. Sourced: the maze
+   wraps both axes; difficulty changes cavern count (fewer = harder, the
+   clues cover more of the map). EASY 8x4=32, HARD 6x4=24, PRO 4x4=16.
+   Generation: randomized DFS spanning tree on the torus + extra tunnels
+   for loops, so every cavern is reachable (SCOPE W1) and deduction has
+   multiple routes.
+   ========================================================================= */
+const DIFFS = [
+  { name:'EASY', cols:8, rows:4, base:600  },
+  { name:'HARD', cols:6, rows:4, base:900  },
+  { name:'PRO',  cols:4, rows:4, base:1200 }
+];
+const DIRS = [ {dx:-1,dy:0,name:'left'}, {dx:1,dy:0,name:'right'},
+               {dx:0,dy:-1,name:'up'},   {dx:0,dy:1,name:'down'} ];
+const OPP  = { left:'right', right:'left', up:'down', down:'up' };
+
+function makeMaze(cols, rows, rng) {
+  rng = rng || Math.random;
+  const N = cols * rows;
+  const idx = (x, y) => ((y + rows) % rows) * cols + ((x + cols) % cols);
+  // tunnels[i] = { left, right, up, down } booleans
+  const tunnels = Array.from({ length: N }, () => ({ left:false, right:false, up:false, down:false }));
+  const seen = new Array(N).fill(false);
+  const stack = [0];
+  seen[0] = true;
+  while (stack.length) {
+    const cur = stack[stack.length - 1];
+    const cxg = cur % cols, cyg = (cur / cols) | 0;
+    const options = DIRS.filter(d => !seen[idx(cxg + d.dx, cyg + d.dy)]);
+    if (!options.length) { stack.pop(); continue; }
+    const d = options[(rng() * options.length) | 0];
+    const nxt = idx(cxg + d.dx, cyg + d.dy);
+    tunnels[cur][d.name] = true;
+    tunnels[nxt][OPP[d.name]] = true;
+    seen[nxt] = true;
+    stack.push(nxt);
+  }
+  // extra tunnels (~18% of cells) so the cave has loops
+  const extras = Math.max(2, (N * 0.18) | 0);
+  for (let k = 0; k < extras; k++) {
+    const i = (rng() * N) | 0;
+    const d = DIRS[(rng() * 4) | 0];
+    const j = idx(i % cols + d.dx, ((i / cols) | 0) + d.dy);
+    tunnels[i][d.name] = true;
+    tunnels[j][OPP[d.name]] = true;
+  }
+  return { cols, rows, tunnels, idx };
+}
+
+function neighbors(maze, i) {
+  const x = i % maze.cols, y = (i / maze.cols) | 0, out = [];
+  for (const d of DIRS)
+    if (maze.tunnels[i][d.name]) out.push({ dir: d.name, i: maze.idx(x + d.dx, y + d.dy) });
+  return out;
+}
+
+/* Tunnel-graph BFS distances from a cavern — clues are graph distances,
+   not geometric ones, and they honour the wrap (SCOPE W3/W4). */
+function distancesFrom(maze, src) {
+  const dist = new Array(maze.cols * maze.rows).fill(Infinity);
+  dist[src] = 0;
+  const q = [src];
+  while (q.length) {
+    const c = q.shift();
+    for (const n of neighbors(maze, c))
+      if (dist[n.i] === Infinity) { dist[n.i] = dist[c] + 1; q.push(n.i); }
+  }
+  return dist;
+}
+
+function placeHazards(maze, rng) {
+  rng = rng || Math.random;
+  const N = maze.cols * maze.rows;
+  const start = (rng() * N) | 0;
+  const taken = new Set([start]);
+  const pick = () => {
+    let i;
+    do { i = (rng() * N) | 0; } while (taken.has(i));
+    taken.add(i);
+    return i;
+  };
+  return { start, wumpus: pick(), pits: [pick(), pick()], bats: [pick(), pick()] };
+}
+
+/* ---- Game state -------------------------------------------------------- */
+const game = {
+  state: 'title',       // title | play | aim | walk | batride | dying | win | over | entry
+  paused: false,
+  diffIndex: 0,
+  maze: null, hazards: null,
+  wumpusDist: null,     // graph distances from the wumpus (clues derive from this)
+  player: 0,
+  visited: new Set(),
+  moves: 0, arrowUsed: false,
+  score: 0, lastRank: 0, entry: null,
+  walk: null,           // { from, to, t, dir }
+  bat: null,            // { t, to }
+  arrowAnim: null,      // { dir, t, hit }
+  deathBy: null,        // 'pit' | 'wumpus' | 'arrow'
+  msg: null,            // { text, t }
+  time: 0
+};
+
+function diff() { return DIFFS[game.diffIndex]; }
+
+/* Lifecycle: one function per event (INV-11), rebuild not repair (INV-5). */
+function newGame() {
+  const d = diff();
+  game.maze = makeMaze(d.cols, d.rows);
+  game.hazards = placeHazards(game.maze);
+  game.wumpusDist = distancesFrom(game.maze, game.hazards.wumpus);
+  game.player = game.hazards.start;
+  game.visited = new Set([game.hazards.start]);
+  game.moves = 0; game.arrowUsed = false;
+  game.score = 0; game.lastRank = 0;
+  game.walk = null; game.bat = null; game.arrowAnim = null;
+  game.deathBy = null; game.msg = null;
+  game.paused = false;
+  game.state = 'play';
+}
+
+function winScore() {
+  return Math.max(100, diff().base - game.moves * 5);
+}
+
+/* Clues for a cavern — pure derivation from ground truth (one fact, one
+   home): bloodspot iff wumpus within 2 tunnels, green iff pit adjacent,
+   squeak iff bats adjacent [ASSUMED, mirrors Yob 1973]. */
+function clues(i) {
+  const pitAdj = neighbors(game.maze, i).some(n => game.hazards.pits.includes(n.i));
+  const batAdj = neighbors(game.maze, i).some(n => game.hazards.bats.includes(n.i));
+  return {
+    blood: game.wumpusDist[i] > 0 && game.wumpusDist[i] <= 2,
+    green: pitAdj,
+    squeak: batAdj
+  };
+}
+
+/* Resolve arrival in a cavern. Returns 'dead' | 'bat' | 'ok'. */
+function resolveCavern() {
+  const i = game.player;
+  game.visited.add(i);
+  if (i === game.hazards.wumpus) {
+    game.deathBy = 'wumpus'; game.state = 'dying'; game.dyingT = 1400;
+    Sound.wumpus();
+    return 'dead';
+  }
+  if (game.hazards.pits.includes(i)) {
+    game.deathBy = 'pit'; game.state = 'dying'; game.dyingT = 1400;
+    Sound.pit();
+    return 'dead';
+  }
+  if (game.hazards.bats.includes(i)) {
+    // bats carry you to a random cavern that is not a hazard (SCOPE W5)
+    const N = game.maze.cols * game.maze.rows;
+    let to;
+    do { to = (Math.random() * N) | 0; }
+    while (to === game.hazards.wumpus || game.hazards.pits.includes(to) ||
+           game.hazards.bats.includes(to));
+    game.bat = { t: 900, to };
+    game.state = 'batride';
+    Sound.bat();
+    return 'bat';
+  }
+  return 'ok';
+}
+
+function tryMove(dirName) {
+  const i = game.player;
+  if (!game.maze.tunnels[i][dirName]) { Sound.wall(); return false; }
+  const x = i % game.maze.cols, y = (i / game.maze.cols) | 0;
+  const d = DIRS.find(dd => dd.name === dirName);
+  const to = game.maze.idx(x + d.dx, y + d.dy);
+  game.walk = { from: i, to, t: 160, dir: dirName };
+  game.state = 'walk';
+  game.moves++;
+  Sound.step();
+  return true;
+}
+
+function fireArrow(dirName) {
+  const i = game.player;
+  if (!game.maze.tunnels[i][dirName]) { Sound.wall(); return false; }
+  const x = i % game.maze.cols, y = (i / game.maze.cols) | 0;
+  const d = DIRS.find(dd => dd.name === dirName);
+  const target = game.maze.idx(x + d.dx, y + d.dy);
+  game.arrowUsed = true;
+  const hit = target === game.hazards.wumpus;
+  game.arrowAnim = { dir: dirName, t: 420, hit, target };
+  game.state = 'arrowfly';
+  Sound.arrow();
+  return true;
+}
+
+/* ---- Update ------------------------------------------------------------ */
+const prev = { left:false, right:false, up:false, down:false, fire:false };
+function edge(name) {
+  const now = held[name]();
+  const was = prev[name];
+  prev[name] = now;
+  return now && !was;
+}
+
+function update(dt) {
+  game.time += dt;
+  if (game.msg) { game.msg.t -= dt; if (game.msg.t <= 0) game.msg = null; }
+
+  if (game.state === 'title') {
+    if (edge('left'))  { game.diffIndex = (game.diffIndex + DIFFS.length - 1) % DIFFS.length; Sound.aim(); }
+    if (edge('right')) { game.diffIndex = (game.diffIndex + 1) % DIFFS.length; Sound.aim(); }
+    if (edge('fire')) newGame();
+    edge('up'); edge('down');
+    return;
+  }
+
+  if (game.state === 'entry') {
+    const e = game.entry;
+    const L = edge('left'), R = edge('right'), OK = edge('fire');
+    const cyc = d2 => { e.chars[e.slot] = (e.chars[e.slot] + d2 + LETTERS.length) % LETTERS.length; };
+    if (L) cyc(-1);
+    if (R) cyc(+1);
+    if (OK) advanceEntry();
+    edge('up'); edge('down');
+    return;
+  }
+
+  if (game.state === 'win' || game.state === 'over') {
+    if (edge('fire')) startEntryOrTitle();
+    edge('left'); edge('right'); edge('up'); edge('down');
+    return;
+  }
+
+  if (game.paused) { edge('left'); edge('right'); edge('up'); edge('down'); edge('fire'); return; }
+
+  /* Animation states still track edges, so a button held across the
+     animation cannot edge-trigger on arrival (INV-15's shape, non-modal). */
+  if (game.state === 'walk' || game.state === 'batride' ||
+      game.state === 'arrowfly' || game.state === 'dying') {
+    edge('left'); edge('right'); edge('up'); edge('down'); edge('fire');
+  }
+
+  if (game.state === 'walk') {
+    game.walk.t -= dt;
+    if (game.walk.t <= 0) {
+      game.player = game.walk.to;
+      game.walk = null;
+      game.state = 'play';
+      resolveCavern();
+    }
+    return;
+  }
+
+  if (game.state === 'batride') {
+    game.bat.t -= dt;
+    if (game.bat.t <= 0) {
+      game.player = game.bat.to;
+      game.bat = null;
+      game.state = 'play';
+      resolveCavern();          // landing cavern is guaranteed hazard-free
+    }
+    return;
+  }
+
+  if (game.state === 'arrowfly') {
+    game.arrowAnim.t -= dt;
+    if (game.arrowAnim.t <= 0) {
+      if (game.arrowAnim.hit) {
+        game.score = winScore();
+        game.state = 'win';
+        Sound.win();
+      } else {
+        // miss: the wumpus finds you (sourced: missing means immediate loss)
+        game.deathBy = 'arrow';
+        game.state = 'dying'; game.dyingT = 1400;
+        Sound.wumpus();
+      }
+      game.arrowAnim = null;
+    }
+    return;
+  }
+
+  if (game.state === 'dying') {
+    game.dyingT -= dt;
+    if (game.dyingT <= 0) {
+      game.score = 0;
+      game.state = 'over';
+      Sound.lose();
+    }
+    return;
+  }
+
+  if (game.state === 'aim') {
+    if (edge('fire')) { game.state = 'play'; return; }   // fire again cancels
+    for (const d of DIRS) if (edge(d.name)) { fireArrow(d.name); return; }
+    return;
+  }
+
+  /* state === 'play' — turn-based: edge-triggered moves */
+  if (edge('fire')) { if (!game.arrowUsed) { game.state = 'aim'; Sound.aim(); } return; }
+  for (const d of DIRS) if (edge(d.name)) { tryMove(d.name); return; }
+}
+
+/* Initials entry — the shared modal protocol (INV-15: modal owns its
+   bindings; edge() treats the entering press as already held because prev
+   was set true by the transition frame). */
+function startEntryOrTitle() {
+  if (HiScore.qualifies(game.score)) {
+    game.entry = { chars: [0,0,0], slot: 0 };
+    prev.left = prev.right = prev.fire = true;   // every button already held
+    game.state = 'entry';
+  } else {
+    game.state = 'title';
+  }
+}
+function advanceEntry() {
+  const e = game.entry;
+  if (!e) return;
+  e.slot++;
+  if (e.slot > 2) {
+    game.lastRank = HiScore.add(e.chars.map(i => LETTERS[i]).join(''), game.score);
+    game.entry = null;
+    game.state = 'title';
+  }
+}
+
+/* ---- FEEDBACK — shared contract pilot (rung 5). ------------------------
+   Opens a DOM modal, pauses play, builds a context-stamped report, and
+   ships it as a prefilled GitHub issue URL or to the clipboard. No network
+   request is ever made from this file — the standalone law holds; the
+   browser follows the URL, not the game. */
+const Feedback = (() => {
+  const ISSUES = 'https://github.com/Sobevista/arcade-progression/issues/new';
+  const root = document.getElementById('fb');
+  const ta = document.getElementById('fbText');
+  const ctxEl = document.getElementById('fbCtx');
+  const note = document.getElementById('fbNote');
+  let isOpen = false;
+
+  function context() {
+    return [
+      'game: WUMPUS (rung 5, TI-99/4A)',
+      'state: ' + game.state + (game.paused ? ' (paused)' : ''),
+      'difficulty: ' + diff().name + '  moves: ' + game.moves +
+        '  arrow used: ' + game.arrowUsed,
+      'score: ' + game.score + '  top: ' + topScore(),
+      'date: ' + new Date().toISOString(),
+      'viewport: ' + window.innerWidth + 'x' + window.innerHeight + ' @' + scale + 'x' +
+        (document.body.classList.contains('touch') ? ' touch' : ''),
+      'ua: ' + navigator.userAgent
+    ].join('\n');
+  }
+  function buildReport() {
+    const t = ta.value.trim();
+    return '### Playtest report\n\n' + (t || '(no text entered)') +
+           '\n\n---\n```\n' + context() + '\n```\n';
+  }
+  function open() {
+    if (isOpen) return;
+    isOpen = true;
+    if (game.state === 'play' || game.state === 'aim') game.paused = true;
+    for (const k in keys) keys[k] = false;         // INV-15: drop held gameplay keys
+    touch.left = touch.right = touch.up = touch.down = touch.fire = false;
+    note.textContent = '';
+    ctxEl.textContent = context();
+    root.classList.add('open');
+    ta.focus();
+  }
+  function close() {
+    if (!isOpen) return;
+    isOpen = false;
+    root.classList.remove('open');
+    ta.blur();
+    // deliberately stays paused — the player resumes on their own terms
+  }
+  document.getElementById('fbClose').addEventListener('click', close);
+  document.getElementById('fbGh').addEventListener('click', () => {
+    const url = ISSUES + '?title=' + encodeURIComponent('[wumpus] playtest report') +
+                '&body=' + encodeURIComponent(buildReport());
+    window.open(url, '_blank');
+    note.textContent = 'OPENED GITHUB IN A NEW TAB';
+  });
+  document.getElementById('fbCopy').addEventListener('click', () => {
+    const r = buildReport();
+    const done = () => { note.textContent = 'COPIED - PASTE IT TO DANIEL'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(r).then(done, () => fallback());
+    } else fallback();
+    function fallback() {
+      ta.value = r; ta.select();
+      try { document.execCommand('copy'); done(); }
+      catch (e) { note.textContent = 'COPY FAILED - SELECT AND COPY BY HAND'; }
+    }
+  });
+  return { open, close, buildReport, get isOpen() { return isOpen; } };
+})();
+
+/* ---- Render ------------------------------------------------------------ */
+const FIELD = { x:8, y:34, w:208, h:200 };
+
+function cellRect(i) {
+  const m = game.maze;
+  const cw = (FIELD.w / m.cols), ch = (FIELD.h / m.rows);
+  const x = i % m.cols, y = (i / m.cols) | 0;
+  return { x: FIELD.x + x * cw, y: FIELD.y + y * ch, w: cw, h: ch };
+}
+
+function drawCavern(i, now) {
+  const r = cellRect(i);
+  const c = clues(i);
+  const t = game.maze.tunnels[i];
+  const wall = c.green ? TI.mediumGreen : '#4a4a55';
+  const x0 = r.x + 2 | 0, y0 = r.y + 2 | 0, x1 = r.x + r.w - 2 | 0, y1 = r.y + r.h - 2 | 0;
+  cx.fillStyle = '#0b0b10';
+  cx.fillRect(x0, y0, x1 - x0, y1 - y0);
+  cx.fillStyle = wall;
+  const gapW = Math.min(10, (r.w / 3) | 0), gapH = Math.min(10, (r.h / 3) | 0);
+  const midX = ((x0 + x1) / 2) | 0, midY = ((y0 + y1) / 2) | 0;
+  // walls with tunnel gaps
+  const seg = (xa, ya, xb, yb) => cx.fillRect(xa, ya, Math.max(1, xb - xa), Math.max(1, yb - ya));
+  // top
+  if (t.up) { seg(x0, y0, midX - gapW/2, y0+1); seg(midX + gapW/2, y0, x1, y0+1); }
+  else seg(x0, y0, x1, y0+1);
+  // bottom
+  if (t.down) { seg(x0, y1-1, midX - gapW/2, y1); seg(midX + gapW/2, y1-1, x1, y1); }
+  else seg(x0, y1-1, x1, y1);
+  // left
+  if (t.left) { seg(x0, y0, x0+1, midY - gapH/2); seg(x0, midY + gapH/2, x0+1, y1); }
+  else seg(x0, y0, x0+1, y1);
+  // right
+  if (t.right) { seg(x1-1, y0, x1, midY - gapH/2); seg(x1-1, midY + gapH/2, x1, y1); }
+  else seg(x1-1, y0, x1, y1);
+
+  // clues
+  if (c.blood) { cx.fillStyle = TI.mediumRed; cx.fillRect(x0 + 3, y0 + 3, 4, 4); }
+  if (c.squeak) {
+    const ph = ((now / 400 | 0) % 2);
+    cx.fillStyle = ph ? TI.cyan : TI.lightBlue;
+    cx.fillRect(x1 - 7, y0 + 3, 2, 2); cx.fillRect(x1 - 5, y0 + 4, 2, 2); cx.fillRect(x1 - 9, y0 + 4, 2, 2);
+  }
+}
+
+function playerXY() {
+  if (game.walk) {
+    const a = cellRect(game.walk.from), b = cellRect(game.walk.to);
+    const k = 1 - game.walk.t / 160;
+    // wrap-aware: if the two cells are far apart, snap at midpoint
+    const far = Math.abs(a.x - b.x) > FIELD.w / 2 || Math.abs(a.y - b.y) > FIELD.h / 2;
+    const src = far ? b : a;
+    const dst = b;
+    return { x: src.x + (dst.x - src.x) * (far ? 1 : k) + src.w/2,
+             y: src.y + (dst.y - src.y) * (far ? 1 : k) + src.h/2 };
+  }
+  const r = cellRect(game.player);
+  return { x: r.x + r.w/2, y: r.y + r.h/2 };
+}
+
+function render() {
+  const now = performance.now();
+  cx.fillStyle = TI.black;
+  cx.fillRect(0, 0, W, H);
+
+  // HUD
+  text('SCORE', 6, 4, TI.gray);
+  text(String(game.state === 'win' ? game.score : 0).padStart(6,'0'), 6, 12, TI.white);
+  const hs = 'HI ' + String(topScore()).padStart(6,'0');
+  text(hs, W - textW(hs) - 6, 4, TI.gray);
+  if (Sound.muted) center('SOUND OFF', 4, '#555');
+
+  if (game.state === 'title') {
+    center('HUNT THE WUMPUS', 40, TI.mediumRed);
+    center('TI-99/4A - 1980', 54, '#444');
+    const d = diff();
+    center('< ' + d.name + ' - ' + (d.cols * d.rows) + ' CAVERNS >', 70, TI.lightYellow);
+
+    const list = HiScore.list();
+    center('HIGH SCORES', 92, TI.cyan);
+    if (!list.length) {
+      center('NO SCORES YET', 110, '#555');
+    } else {
+      let y = 106;
+      list.forEach((e, i) => {
+        const fresh = game.lastRank === i + 1;
+        const blink = fresh && ((now/300|0) % 2);
+        const col = blink ? TI.white : fresh ? TI.lightYellow : TI.gray;
+        text(String(i+1).padStart(2,' '), 42, y, '#555');
+        text(e.n, 66, y, col);
+        text(String(e.s).padStart(6,'0'), 102, y, col);
+        text(e.d.slice(5), 152, y, '#3d3d3d');
+        y += 10;
+      });
+    }
+    center(matchMedia('(hover: none)').matches ? 'TAP FIRE TO START' : 'PRESS SPACE TO START',
+           196, ((now/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
+    center('RED SPOT: WUMPUS NEAR', 218, TI.mediumRed);
+    center('GREEN WALLS: PIT NEXT DOOR', 230, TI.mediumGreen);
+    center('SQUEAK: BATS NEXT DOOR', 242, TI.cyan);
+    center('ONE ARROW. MISS AND DIE.', 258, '#666');
+    return;
+  }
+
+  if (game.state === 'entry') {
+    center('NEW HIGH SCORE', 76, TI.lightYellow);
+    center(String(game.score), 96, TI.white);
+    center('ENTER YOUR INITIALS', 118, '#666');
+    const e = game.entry;
+    for (let i = 0; i < 3; i++) {
+      const x = (W/2|0) - 21 + i*16;
+      const active = i === e.slot;
+      const blink = active && ((now/300|0) % 2);
+      text(LETTERS[e.chars[i]], x, 140, blink ? TI.white : active ? TI.lightYellow : TI.gray);
+      if (active) { cx.fillStyle = TI.lightYellow; cx.fillRect(x, 150, 5, 1); }
+    }
+    center(matchMedia('(hover: none)').matches
+      ? 'SWIVEL PICKS - FIRE LOCKS IN'
+      : 'ARROWS OR TYPE - SPACE LOCKS IN', 176, '#555');
+    return;
+  }
+
+  // playfield frame
+  cx.strokeStyle = '#222'; cx.strokeRect(FIELD.x - 1.5, FIELD.y - 1.5, FIELD.w + 3, FIELD.h + 3);
+
+  // visited caverns only (fog of war, SCOPE W7)
+  for (const i of game.visited) drawCavern(i, now);
+
+  // reveal on death
+  if (game.state === 'dying' || game.state === 'over') {
+    const wr = cellRect(game.hazards.wumpus);
+    draw(WUMP, wr.x + wr.w/2 - WUMP.w/2, wr.y + wr.h/2 - WUMP.h/2, TI.mediumRed);
+  }
+
+  // arrow flight
+  if (game.state === 'arrowfly' && game.arrowAnim) {
+    const p = playerXY();
+    const d = DIRS.find(dd => dd.name === game.arrowAnim.dir);
+    const k = 1 - game.arrowAnim.t / 420;
+    const r = cellRect(game.player);
+    draw(ARROWSPR, p.x + d.dx * r.w * k, p.y + d.dy * r.h * k, TI.lightYellow);
+  }
+
+  // player
+  if (game.state !== 'over' || game.deathBy === 'arrow') {
+    const p = playerXY();
+    if (game.state === 'batride') {
+      const k = 1 - game.bat.t / 900;
+      const bx = p.x + Math.sin(now / 60) * 8;
+      const by = p.y - k * 14 - 4;
+      draw(BATSPR, bx - BATSPR.w/2, by - 8, TI.magenta);
+      draw(HUNTER, bx - HUNTER.w/2, by, TI.white);
+    } else if (game.state === 'dying' && game.deathBy === 'pit') {
+      const k = 1 - game.dyingT / 1400;
+      cx.save(); cx.beginPath();
+      cx.rect(p.x - 8, p.y - 6, 16, Math.max(0, 12 - k * 14));
+      cx.clip();
+      draw(HUNTER, p.x - HUNTER.w/2, p.y - 4 + k * 10, TI.white);
+      cx.restore();
+    } else {
+      draw(HUNTER, p.x - HUNTER.w/2, p.y - HUNTER.h/2, TI.white);
+    }
+  }
+
+  // aim overlay: blink direction markers on open tunnels
+  if (game.state === 'aim') {
+    const p = playerXY();
+    const r = cellRect(game.player);
+    const t = game.maze.tunnels[game.player];
+    const blink = ((now/250|0) % 2);
+    if (t.left)  text('<', p.x - r.w/2 + 2, p.y - 3, blink ? TI.lightYellow : TI.darkYellow);
+    if (t.right) text('>', p.x + r.w/2 - 7, p.y - 3, blink ? TI.lightYellow : TI.darkYellow);
+    if (t.up)    text('!', p.x - 2, p.y - r.h/2 + 1, blink ? TI.lightYellow : TI.darkYellow);
+    if (t.down)  text('!', p.x - 2, p.y + r.h/2 - 8, blink ? TI.lightYellow : TI.darkYellow);
+    center('AIM: PICK A DIRECTION', 246, TI.lightYellow);
+    center('FIRE AGAIN TO CANCEL', 256, '#666');
+  }
+
+  // status line
+  const d = diff();
+  text(d.name, 8, 240, '#666');
+  text('MOVES ' + game.moves, 8, 250, TI.gray);
+  text('ARROW ' + (game.arrowUsed ? '0' : '1'), 8, 260, game.arrowUsed ? '#555' : TI.lightYellow);
+
+  // current cavern clue readout (the TI original narrated these)
+  if (game.state === 'play' || game.state === 'aim') {
+    const c = clues(game.player);
+    let y = 240;
+    if (c.blood)  { const s = 'YOU SMELL A WUMPUS'; text(s, W - textW(s) - 8, y, TI.mediumRed); y += 10; }
+    if (c.green)  { const s = 'YOU FEEL A DRAFT'; text(s, W - textW(s) - 8, y, TI.mediumGreen); y += 10; }
+    if (c.squeak) { const s = 'YOU HEAR SQUEAKING'; text(s, W - textW(s) - 8, y, TI.cyan); y += 10; }
+  }
+
+  if (game.msg) center(game.msg.text, 150, TI.lightYellow);
+  if (game.paused) center('PAUSED', 130, TI.lightYellow);
+
+  if (game.state === 'win') {
+    center('YOU GOT THE WUMPUS', 118, TI.lightGreen);
+    center('SCORE ' + game.score, 134, TI.white);
+    center('IN ' + game.moves + ' MOVES', 146, TI.gray);
+    center('FIRE TO CONTINUE', 170, TI.gray);
+  }
+  if (game.state === 'over') {
+    center(game.deathBy === 'pit'   ? 'YOU FELL IN A SLIME PIT' :
+           game.deathBy === 'arrow' ? 'YOUR ARROW MISSED' :
+                                      'THE WUMPUS GOT YOU', 118, TI.mediumRed);
+    if (game.deathBy === 'arrow') center('THE WUMPUS FOUND YOU', 130, TI.mediumRed);
+    center('GAME OVER', 148, TI.gray);
+    center('FIRE TO CONTINUE', 170, TI.gray);
+  }
+}
+
+/* ---- Loop -------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(50, now - last);   // INV-2
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---- Test hook (INV-6) + sim contract ----------------------------------
+   observe() exposes ONLY what a player could see — clue flags, the visited
+   map, state. Ground truth (wumpus/pits/bats) is on this hook root for
+   VERIFICATION, and a bot that reads it is cheating by definition. */
+window.__wumpus = {
+  get state()  { return game.state; },
+  get score()  { return game.score; },
+  get moves()  { return game.moves; },
+  game, newGame, toTitle, Sound, HiScore, LETTERS,
+  startEntryOrTitle, advanceEntry, topScore, Stick, TI, Feedback,
+  makeMaze, placeHazards, distancesFrom, neighbors, clues, DIFFS, DIRS,
+  geom: { W, H, FIELD },
+  sim: {
+    input: simInput,
+    step(dt) { update(dt); },
+    reset() { simInput.left = simInput.right = simInput.up = simInput.down = simInput.fire = false; },
+    observe() {
+      const c = (game.state === 'play' || game.state === 'aim') ? clues(game.player) : null;
+      return {
+        state: game.state, paused: game.paused,
+        difficulty: DIFFS[game.diffIndex].name,
+        cols: game.maze ? game.maze.cols : 0,
+        rows: game.maze ? game.maze.rows : 0,
+        player: game.player,
+        tunnels: game.maze ? game.maze.tunnels[game.player] : null,
+        clues: c,
+        visited: [...game.visited],
+        moves: game.moves, arrowUsed: game.arrowUsed,
+        score: game.score
+      };
+    }
+  }
+};
+</script>

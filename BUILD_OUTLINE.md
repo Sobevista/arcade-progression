@@ -89,6 +89,27 @@ not an oversight. It should be revisited the moment either becomes true:
   worth gating (the browser-driven pass criteria would need a headless runner).
 - **Audio verification:** synthesised SFX are proven to *construct and schedule*
   correctly, but audibility on a given device is a human check. No automated oracle.
+- **Rung 5 W9 ruling (DANIEL):** the Wumpus SCOPE asked the reasoning bot to win ≥60%
+  on EASY. Measured ceiling across three bot generations: **55–58%** vs a random
+  baseline of **0.5%** — zero unsound inferences, every loss a forced gamble, because
+  the sourced 1980 clue economy warns of pits only at distance 1 (an irreducible luck
+  floor, ~40% of games). The claim the criterion existed for (deduction beats luck) is
+  proven at >100×; the number 60% was a pre-build guess above the original design's
+  structural ceiling. Call needed: accept the ratio evidence as the pass, or rule the
+  fidelity-vs-luck tradeoff differently. The game was NOT changed to chase the number.
+- **Rung 5 P10 sub-criterion (recorded defect):** "competent survival time strictly
+  decreases per level" measured the wrong proxy — level duration is fixed content
+  length. Death-level distribution carries the difficulty signal instead (firstTimer
+  100% dead in L1; competent past L2 5/5, dying L3–4 in 40% of runs, marathons
+  otherwise — period-faithful per the 2M-point record culture, UX-30).
+- **Feedback contract rollout (DANIEL, after the family pilot):** the in-game
+  FEEDBACK overlay (pause → context-stamped report → prefilled GitHub issue or
+  clipboard) is live on the two rung-5 games only; conformance abstains loudly on
+  rungs 2–4. Rollout = empty `pilotOnly` in tools/conformance.js and add the overlay
+  to the three legacy rungs. Also queued: a `.github/ISSUE_TEMPLATE/playtest` form so
+  drive-by GitHub visitors arrive structured.
+- **Release gating for rung 5 (DANIEL):** `releases.json` still advertises Invaders
+  only; rungs 3, 4, and now 5a/5b await the pacing call.
 
 ## STATE OF BUILD
 
@@ -391,3 +412,52 @@ not an oversight. It should be revisited the moment either becomes true:
   **NEXT ACTION: family playtest of rung 4** — the transit-kill question, dive feel,
   capture fairness, tablet touch, audio; then Daniel's release-gating call for rungs
   3 and 4. After that: rung 5 = TI-99/4A titles, archaeology first.
+
+- **2026-07-18 — Rung 5 (TI-99/4A: Hunt the Wumpus + Parsec) built the doctrine's way,
+  both games machine-verified. Human playtest still ahead — not done by the repo's own
+  standard.** Pair chosen for maximum learning orthogonality (Daniel locked Parsec;
+  the learning call picked Wumpus over Munch Man/Alpiner/Anteater for the second
+  slot): a turn-based deduction game and the ladder's first scrolling world.
+
+  Archaeology first, four lessons into the trove before code: **A-17** (the TI's
+  defining constraint was memory *topology* — 256 bytes of true CPU RAM, 16 KB behind
+  the video chip's port; Parsec's scroll routine ran inside the scratchpad), **A-18**
+  (Parsec's endgame wall is a signed 8-bit sprite-velocity overflow — an unexamined
+  numeric limit becomes gameplay; our ramp gets an authored ceiling, asserted in sim),
+  **A-19** (speech as an information channel: it earns its keep replacing a glance,
+  not duplicating the screen), **A-20** (Yob built the 1973 dodecahedron to escape
+  grids; the TI's character-cell display re-gridded it — the renderer lobbies
+  silently for shapes it draws natively).
+
+  **Wumpus:** wrapping-grid maze (32/24/16 caverns by difficulty), sourced clue radii
+  exact (bloodspots ≤2 tunnels, green walls adjacent to pits), bats, one arrow.
+  Verified: maze/placement/wrap 150/150, clue derivation exact 30/30 games, all rule
+  outcomes, fog, score-by-moves, restarts clean. **The deduction evidence: reasoning
+  bot 55–58% wins vs random 0.5% — >100×, zero unsound inferences.** W9's 60% bar
+  fails as written; measured as the sourced design's structural luck floor, flagged
+  for Daniel's ruling (OPEN above) rather than silently re-barred — and two of my own
+  instrument bugs were caught en route (INV-3, INV-14 both exercised).
+
+  **Parsec:** native 256×192 raster, procedural scrolling terrain, laser heat, fuel +
+  refuel tunnel, six sourced enemy classes with the **score table exact at levels 1
+  and 2** (100/200/300 pairs, +100/level), saucers from behind, asteroid belt +1,000,
+  speech via built-in synthesis (playable silent), authored ramp cap 1.77× at level 8.
+  Substep sweep 16/16 (after correcting my own test artifact), entity leak zero
+  across restarts, tiers: firstTimer 100% dead in L1, competent 5/5 past L2.
+
+  **Feedback contract born (pilot):** FEEDBACK button / `F` pauses play, opens a
+  context-stamped report overlay → prefilled GitHub issue URL or clipboard (no
+  network from the file; standalone stays true). Conformance check shipped **in the
+  same commit** (INV-18), pilot-scoped to rung 5 with loud abstention elsewhere
+  (INV-19). **All five games CONFORMANT** (parsec 12/12, wumpus 11/11+1 n/a, legacy
+  rungs unchanged). Docs flipped together; `releases.json` untouched (Daniel's
+  pacing gate — still Invaders-only).
+
+  Environment note for the record: the Browser pane refused file:// outside the
+  session project; verification ran over a local `py -m http.server` — which also
+  gave the INV-19-fixed standalone check real bytes to read (41–54 KB per game).
+
+  **NEXT ACTION: family playtest of rungs 4 AND 5 together** — Galaga's transit-kill
+  flag, Wumpus clue readability with the kids, Parsec difficulty feel, and the
+  feedback button in real testers' hands (its pilot IS the test). Then Daniel:
+  W9 ruling, feedback rollout call, release gating for 3/4/5.

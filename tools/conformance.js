@@ -150,6 +150,33 @@ const Conformance = (() => {
       check: g => ({ pass: !!(g && (g.TI || g.game)), detail: 'assumed by inspection' })
     },
 
+    feedback: {
+      why: 'playtest reports must be sendable MID-PLAY (rung 5 pilot) — a tester who ' +
+           'has to leave the game to report loses the moment',
+      /* PILOT SCOPE (2026-07-18): piloted on the rung-5 games before fleet
+         rollout — Daniel's call after the pilot. Out-of-pilot rungs get a
+         LOUD abstention, never a silent pass (INV-19). Fleet rollout =
+         empty this list. */
+      pilotOnly: ['wumpus', 'parsec'],
+      check(g, name) {
+        if (!this.pilotOnly.includes(name)) {
+          return { pass: null,
+                   detail: 'PILOT: contract not yet rolled out to this rung — abstaining' };
+        }
+        const f = g && g.Feedback;
+        if (!f) return { pass: false, detail: 'NO FEEDBACK MODULE' };
+        const api = ['open', 'close', 'buildReport'].every(k => typeof f[k] === 'function') &&
+                    typeof f.isOpen === 'boolean';
+        if (!api) return { pass: false, detail: 'incomplete API' };
+        const rep = f.buildReport();
+        const stamped = ['state:', 'score:', 'date:', 'viewport:', 'ua:']
+          .every(t => rep.includes(t));
+        return { pass: stamped,
+                 detail: stamped ? 'api complete, report context-stamped'
+                                 : 'report missing context fields' };
+      }
+    },
+
     standalone: {
       why: 'each rung must be a movable cog — one file that runs anywhere, alone',
       check: async () => {

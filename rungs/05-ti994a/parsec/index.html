@@ -1,0 +1,1118 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>PARSEC — rung 5</title>
+
+<style>
+  :root { --ti-black:#000000; --ti-gray:#CCCCCC; }
+  /* html must NOT be a flex container — see the note in rung 3 (INV-17). */
+  html { margin:0; height:100%; }
+  body {
+    margin:0; min-height:100%; width:100%; box-sizing:border-box;
+    background:var(--ti-black); color:var(--ti-gray);
+    font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; overflow:hidden; touch-action:none; user-select:none;
+  }
+  canvas { image-rendering:pixelated; display:block; }
+  #pad, #pad2 { display:none; }
+  #pad { width:100%; justify-content:space-between;
+         padding:0 10px; box-sizing:border-box; gap:8px; }
+  #pad button { flex:1 1 0; max-width:190px; height:76px;
+    font:inherit; font-size:24px;
+    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:12px; }
+  #pad2 { gap:8px; margin-bottom:4px; }
+  #pad2 button { width:78px; height:30px; font:inherit; font-size:11px;
+    background:#0a0a0a; color:#777; border:2px solid #242424; border-radius:8px; }
+  #pad button:active, #pad2 button:active { background:#222; }
+  body.touch #pad, body.touch #pad2 { display:flex; }
+  #hint { font-size:12px; color:#555; letter-spacing:1px; }
+  body.touch #hint { display:none; }
+
+  /* Feedback overlay — shared contract pilot (rung 5). */
+  #fb { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.86);
+        z-index:10; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+  #fb.open { display:flex; }
+  #fb .box { width:min(92vw,420px); background:#0a0a0a; border:2px solid #333;
+             border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  #fb h2 { margin:0; font-size:14px; color:var(--ti-gray); letter-spacing:1px; }
+  #fb textarea { width:100%; box-sizing:border-box; height:110px; resize:none;
+                 background:#000; color:var(--ti-gray); border:1px solid #333;
+                 border-radius:6px; font:inherit; font-size:13px; padding:8px; }
+  #fb .ctx { font-size:10px; color:#555; white-space:pre-wrap; }
+  #fb .row { display:flex; gap:8px; }
+  #fb .row button { flex:1; height:40px; font:inherit; font-size:12px;
+                    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:8px; }
+  #fb .row button:active { background:#222; }
+  #fb .note { font-size:10px; color:#4a4; min-height:12px; }
+</style>
+
+<div id="pad2">
+  <button id="bP" aria-label="pause">PAUSE</button>
+  <button id="bT" aria-label="title">TITLE</button>
+  <button id="bM" aria-label="sound">SOUND</button>
+  <button id="bFB" aria-label="feedback">FEEDBACK</button>
+</div>
+<canvas id="screen"></canvas>
+<div id="pad">
+  <button id="bL" aria-label="left">&#9664;</button>
+  <button id="bU" aria-label="up">&#9650;</button>
+  <button id="bF" aria-label="fire">FIRE</button>
+  <button id="bD" aria-label="down">&#9660;</button>
+  <button id="bR" aria-label="right">&#9654;</button>
+</div>
+<div id="hint">ARROWS FLY &nbsp;&middot;&nbsp; SPACE LASER &nbsp;&middot;&nbsp; F FEEDBACK &nbsp;&middot;&nbsp; M SOUND &nbsp;&middot;&nbsp; ESC TITLE</div>
+
+<div id="fb">
+  <div class="box">
+    <h2>REPORT / FEEDBACK</h2>
+    <textarea id="fbText" placeholder="What did you see? What felt wrong or great?"></textarea>
+    <div class="ctx" id="fbCtx"></div>
+    <div class="row">
+      <button id="fbGh">SEND TO GITHUB</button>
+      <button id="fbCopy">COPY REPORT</button>
+      <button id="fbClose">CLOSE</button>
+    </div>
+    <div class="note" id="fbNote"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   PARSEC — rung 5b of the progression. TI-99/4A flagship: Jim Dramis and
+   Paul Urbanus, Texas Instruments, 1982. Single file, vanilla JS, Canvas
+   2D, zero dependencies. Raster: 256x192 — the TI-99/4A's own resolution.
+
+   The rung's theses:
+   A-17 — the original's smooth scroll existed because the routine was
+   hand-carried into the 256-byte scratchpad; scrolling is this build's
+   technical heart (the ladder's first scrolling world).
+   A-18 — Parsec's endgame wall was a signed 8-bit overflow. Our ramp has
+   an AUTHORED ceiling instead (RAMP_CAP_LEVEL), asserted in sim.
+   A-19 — speech is an information channel: wave/fuel warnings delivered
+   off-screen so the eyes stay on the fight. Browser speechSynthesis when
+   available; the game is fully playable silent.
+
+   Sourced: score pairs Swoopers/Urbites 100, LTFs/Dramites 200,
+   Saucers/Bynites 300, +100 per level; asteroids 100, belt survived
+   +1,000; saucers attack from behind; laser refuses to fire below the
+   terrain's peak; level 16 repeats. Wave sizes/order and fuel/heat rates
+   are [ASSUMED], tuned by play.
+   ========================================================================= */
+
+/* ---- TI-99/4A palette (TMS9918A) ------------------------------------- */
+const TI = {
+  black:'#000000', mediumGreen:'#21C842', lightGreen:'#5EDC78',
+  darkBlue:'#5455ED', lightBlue:'#7D76FC', darkRed:'#D4524D',
+  cyan:'#42EBF5',    mediumRed:'#FC5554',  lightRed:'#FF7978',
+  darkYellow:'#D4C154', lightYellow:'#E6CE80', darkGreen:'#21B03B',
+  magenta:'#C95BBA', gray:'#CCCCCC', white:'#FFFFFF'
+};
+
+/* ---- Sound ------------------------------------------------------------- */
+const Sound = (() => {
+  let ac = null, muted = false;
+  const ctx = () => ac || (ac = new (window.AudioContext || window.webkitAudioContext)());
+  function tone({ freq, to = null, dur = 0.1, type = 'square', vol = 0.12, at = 0 }) {
+    if (muted || !ac) return;
+    const c = ac, t0 = c.currentTime + at;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    if (to !== null) o.frequency.linearRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function noise({ dur = 0.2, vol = 0.2 }) {
+    if (muted || !ac) return;
+    const c = ac, n = Math.max(1, Math.floor(c.sampleRate * dur));
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = c.createBufferSource(); s.buffer = buf;
+    const g = c.createGain(); g.gain.value = vol;
+    s.connect(g).connect(c.destination);
+    s.start();
+  }
+  return {
+    unlock() { const c = ctx(); if (c.state === 'suspended') c.resume(); },
+    toggle() { muted = !muted; return muted; },
+    get muted() { return muted; },
+    laser()   { tone({ freq: 1600, to: 500, dur: 0.08, type: 'sawtooth', vol: 0.05 }); },
+    overheat(){ tone({ freq: 200, to: 90, dur: 0.3, type: 'square', vol: 0.1 }); },
+    hit()     { noise({ dur: 0.12, vol: 0.13 }); },
+    death()   { noise({ dur: 0.6, vol: 0.22 });
+                tone({ freq: 300, to: 36, dur: 0.6, type: 'sawtooth', vol: 0.1 }); },
+    refuel()  { tone({ freq: 500, to: 900, dur: 0.15, type: 'sine', vol: 0.07 }); },
+    bonus()   { [659,784,1047].forEach((f,i) =>
+                  tone({ freq:f, dur:0.1, type:'square', vol:0.09, at:i*0.09 })); },
+    level()   { [523,659,784].forEach((f,i) =>
+                  tone({ freq:f, dur:0.1, type:'square', vol:0.08, at:i*0.09 })); },
+    extra()   { [784,988,1175,1568].forEach((f,i) =>
+                  tone({ freq:f, dur:0.09, type:'square', vol:0.09, at:i*0.08 })); }
+  };
+})();
+
+/* ---- SPEECH — A-19: an information channel, not a gimmick. -------------
+   Uses the browser's built-in synthesiser; no request leaves the page.
+   Counted on the test hook so the sim can verify scheduling (SCOPE P6). */
+const Speech = (() => {
+  let count = 0;
+  function say(txt) {
+    count++;                                          // scheduled — observable
+    if (Sound.muted) return;
+    try {
+      if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
+        const u = new SpeechSynthesisUtterance(txt);
+        u.rate = 1.0; u.pitch = 0.6; u.volume = 0.9;
+        window.speechSynthesis.speak(u);
+      }
+    } catch (e) { /* silent machine — the game plays on */ }
+  }
+  return { say, get count() { return count; } };
+})();
+
+/* ---- Logical screen — the TI-99/4A's own raster ------------------------ */
+const W = 256, H = 192;
+const cv = document.getElementById('screen');
+const cx = cv.getContext('2d', { alpha:false });
+
+let scale = 1;
+function fit() {
+  const availW = window.innerWidth  - 16;
+  const availH = window.innerHeight - (document.body.classList.contains('touch') ? 150 : 60);
+  scale = Math.max(1, Math.floor(Math.min(availW / W, availH / H)));   // INV-7
+  cv.width = W; cv.height = H;
+  cv.style.width  = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cx.imageSmoothingEnabled = false;
+}
+if (matchMedia('(hover: none)').matches) document.body.classList.add('touch');
+addEventListener('resize', fit);
+fit();
+
+/* ---- Font (5x7) -------------------------------------------------------- */
+const GLYPHS = {
+ '0':'11111 10001 10001 10001 10001 10001 11111','1':'00100 01100 00100 00100 00100 00100 01110',
+ '2':'11111 00001 00001 11111 10000 10000 11111','3':'11111 00001 00001 11111 00001 00001 11111',
+ '4':'10001 10001 10001 11111 00001 00001 00001','5':'11111 10000 10000 11111 00001 00001 11111',
+ '6':'11111 10000 10000 11111 10001 10001 11111','7':'11111 00001 00010 00100 01000 01000 01000',
+ '8':'11111 10001 10001 11111 10001 10001 11111','9':'11111 10001 10001 11111 00001 00001 11111',
+ 'A':'01110 10001 10001 11111 10001 10001 10001','B':'11110 10001 10001 11110 10001 10001 11110',
+ 'C':'01111 10000 10000 10000 10000 10000 01111','D':'11110 10001 10001 10001 10001 10001 11110',
+ 'E':'11111 10000 10000 11110 10000 10000 11111','F':'11111 10000 10000 11110 10000 10000 10000',
+ 'G':'01111 10000 10000 10111 10001 10001 01111','H':'10001 10001 10001 11111 10001 10001 10001',
+ 'I':'11111 00100 00100 00100 00100 00100 11111','J':'00011 00001 00001 00001 00001 10001 01110',
+ 'K':'10001 10010 10100 11000 10100 10010 10001','L':'10000 10000 10000 10000 10000 10000 11111',
+ 'M':'10001 11011 10101 10101 10001 10001 10001','N':'10001 11001 10101 10011 10001 10001 10001',
+ 'O':'01110 10001 10001 10001 10001 10001 01110','P':'11110 10001 10001 11110 10000 10000 10000',
+ 'Q':'01110 10001 10001 10001 10101 10010 01101','R':'11110 10001 10001 11110 10100 10010 10001',
+ 'S':'01111 10000 10000 01110 00001 00001 11110','T':'11111 00100 00100 00100 00100 00100 00100',
+ 'U':'10001 10001 10001 10001 10001 10001 01110','V':'10001 10001 10001 10001 10001 01010 00100',
+ 'W':'10001 10001 10001 10101 10101 11011 10001','X':'10001 01010 00100 00100 00100 01010 10001',
+ 'Y':'10001 01010 00100 00100 00100 00100 00100','Z':'11111 00001 00010 00100 01000 10000 11111',
+ ' ':'00000 00000 00000 00000 00000 00000 00000','-':'00000 00000 00000 11111 00000 00000 00000',
+ '<':'00010 00100 01000 10000 01000 00100 00010','>':'01000 00100 00010 00001 00010 00100 01000',
+ ':':'00000 00100 00100 00000 00100 00100 00000','!':'00100 00100 00100 00100 00100 00000 00100',
+ '.':'00000 00000 00000 00000 00000 00000 00100','/':'00001 00010 00010 00100 01000 01000 10000',
+ '%':'11001 11010 00010 00100 01000 01011 10011'
+};
+function text(str, x, y, color) {
+  cx.fillStyle = color;
+  let px = x;
+  for (const ch of str.toUpperCase()) {
+    const g = GLYPHS[ch] || GLYPHS[' '];
+    g.split(' ').forEach((row, r) => {
+      for (let c = 0; c < 5; c++) if (row[c] === '1') cx.fillRect(px + c, y + r, 1, 1);
+    });
+    px += 6;
+  }
+}
+const textW = s => s.length * 6 - 1;
+const center = (s, y, color) => text(s, ((W - textW(s)) / 2) | 0, y, color);
+
+/* ---- Sprites ----------------------------------------------------------- */
+function sprite(rows) {
+  return { w: rows[0].length, h: rows.length,
+           bits: rows.map(r => [...r].map(c => c === 'X' ? 1 : 0)) };
+}
+const SHIP = sprite([
+  '.XX..........','.XXXX........','.XXXXXXXX....','XXXXXXXXXXXX.',
+  '.XXXXXXXXXXXX','XXXXXXXXXXXX.','.XXXXXXXX....','.XXXX........','.XX..........']);
+const SWOOPER = sprite([
+  '...XX...','..XXXX..','XXXXXXXX','X.XXXX.X','...XX...']);
+const LTF = sprite([
+  'X.......','XXX.....','XXXXXX..','XXXXXXXX','XXXXXX..','XXX.....','X.......']);
+const SAUCER = sprite([
+  '...XXXX...','.XXXXXXXX.','XXXXXXXXXX','.XX.XX.XX.']);
+const URBITE = sprite([
+  '..XXXX..','.XXXXXX.','XXX..XXX','XXXXXXXX','.X.XX.X.']);
+const DRAMITE = sprite([
+  'X..XX..X','.XXXXXX.','XXXXXXXX','.XXXXXX.','X..XX..X']);
+const BYNITE = sprite([
+  '.XXXXXX.','XX.XX.XX','XXXXXXXX','..X..X..']);
+const ROID = [sprite([
+  '..XXX..','.XXXXX.','XXXXXXX','XXXXXXX','.XXXXX.','..XXX..']),
+  sprite(['.XX.','XXXX','XXXX','.XX.'])];
+const BOOM = sprite([
+  '...X.....X...','X...X...X...X','.X...X.X...X.','..XX.XXX.XX..',
+  '.XXXXXXXXXXX.','..XX.XXX.XX..','.X...X.X...X.','X...X...X...X']);
+
+function draw(s, x, y, color) {
+  cx.fillStyle = color;
+  for (let r = 0; r < s.h; r++)
+    for (let c = 0; c < s.w; c++)
+      if (s.bits[r][c]) cx.fillRect((x|0) + c, (y|0) + r, 1, 1);
+}
+
+/* ---- Enemy classes — the sourced pairs (score = pair value + 100/level) */
+const KINDS = {
+  swooper: { spr: SWOOPER, col: TI.lightYellow, pts: 100, hp: 1 },
+  ltf:     { spr: LTF,     col: TI.cyan,        pts: 200, hp: 1 },
+  saucer:  { spr: SAUCER,  col: TI.mediumRed,   pts: 300, hp: 1 },
+  urbite:  { spr: URBITE,  col: TI.lightBlue,   pts: 100, hp: 2 },
+  dramite: { spr: DRAMITE, col: TI.magenta,     pts: 200, hp: 1 },
+  bynite:  { spr: BYNITE,  col: '#3a3a44',      pts: 300, hp: 1 }   // near-invisible, as shipped
+};
+const WAVE_ORDER = ['swooper','ltf','saucer','urbite','dramite','bynite'];
+const WAVE_SIZE  = { swooper:6, ltf:5, saucer:4, urbite:5, dramite:4, bynite:3 };  // [ASSUMED]
+
+/* ---- Tuning (px/ms). Rates [ASSUMED], tuned by play. ------------------- */
+const SHIP_SPEED  = 0.085;
+const SCROLL      = 0.032;
+const ESHOT_SPEED = 0.16;
+const SUB_PX      = 3;                       // INV-1 substep ceiling
+const HEAT_PER_SHOT = 16, HEAT_DECAY = 0.022, HEAT_MAX = 100, HEAT_OK = 40;
+const FUEL_DRAIN  = 100 / 95000;             // full tank ~95 s of flight
+const RAMP_CAP_LEVEL = 8;                    // A-18: the AUTHORED ceiling
+function levelMul(n) { return 1 + (Math.min(n, RAMP_CAP_LEVEL) - 1) * 0.11; }
+
+const SHIP_X_MAX = 150;
+const SKY_TOP = 14;
+
+/* ---- Terrain — deterministic heightline of world x. -------------------- */
+function groundY(wx) {
+  const a = Math.sin(wx * 0.011), b = Math.sin(wx * 0.023 + 1.7), c = Math.sin(wx * 0.005 + 0.4);
+  return (H - 26 + a * 7 + b * 4 + c * 6) | 0;
+}
+const GROUND_PEAK = H - 26 - 17;             // conservative min of groundY
+
+/* ---- Game state -------------------------------------------------------- */
+const game = {
+  state: 'title',       // title | play | dying | over | entry
+  phase: 'wave',        // wave | belt | tunnel | announce
+  paused: false,
+  level: 1, waveIdx: 0,
+  score: 0, lives: 2, nextLifeAt: 10000,
+  fuel: 100, heat: 0, overheated: false,
+  ship: null,           // { x, y, invuln }
+  enemies: [], shots: [], roids: [], boom: [],
+  laser: null,          // { t, y, x0, x1 }
+  wave: null,           // { kind, toSpawn, timer }
+  belt: null,           // { toSpawn, timer, survived }
+  tunnel: null,         // { t, dur }
+  announceT: 0, announceText: '',
+  worldX: 0,
+  entry: null, lastRank: 0,
+  msg: null, dyingT: 0,
+  time: 0
+};
+
+function makeShip() { return { x: 24, y: 90, invuln: 0 }; }
+
+function newGame() {
+  game.score = 0; game.lives = 2; game.level = 1;
+  game.nextLifeAt = 10000;
+  game.fuel = 100; game.heat = 0; game.overheated = false;
+  game.worldX = 0; game.paused = false;
+  game.enemies.length = 0; game.shots.length = 0;
+  game.roids.length = 0; game.boom.length = 0;
+  game.laser = null; game.msg = null; game.lastRank = 0;
+  game.ship = makeShip();
+  game.state = 'play';
+  startLevel(1);
+}
+
+function startLevel(n) {
+  game.level = n;
+  game.waveIdx = 0;
+  game.enemies.length = 0; game.shots.length = 0; game.roids.length = 0;
+  game.phase = 'announce';
+  game.announceT = 1600;
+  game.announceText = 'LEVEL ' + n;
+  Sound.level();
+  Speech.say('Level ' + n);
+}
+
+function startWave(kindName) {
+  game.wave = { kind: kindName, toSpawn: WAVE_SIZE[kindName], timer: 500 };
+  game.phase = 'wave';
+  Speech.say(kindName === 'ltf' ? 'L T F fighters approaching'
+                                : kindName + 's approaching');
+}
+
+function respawn() {
+  game.ship = makeShip();
+  game.ship.invuln = 1800;
+  game.shots.length = 0;
+  game.heat = 0; game.overheated = false;
+}
+
+function gameOver() {
+  game.state = 'over';
+  game.shots.length = 0;
+}
+
+/* ---- Scoring ----------------------------------------------------------- */
+function killPoints(kindName) {
+  return KINDS[kindName].pts + (Math.min(game.level, 16) - 1) * 100;   // sourced
+}
+function addScore(pts) {
+  game.score += pts;
+  while (game.score >= game.nextLifeAt) {
+    game.lives++;
+    Sound.extra();
+    flashMsg('EXTRA SHIP');
+    game.nextLifeAt += 10000;
+  }
+}
+function flashMsg(t) { game.msg = { text: t, t: 1300 }; }
+
+/* ---- Enemies ----------------------------------------------------------- */
+function spawnEnemy(kindName) {
+  const k = KINDS[kindName];
+  const fromBehind = kindName === 'saucer';            // sourced: attacks from behind
+  const e = {
+    kind: kindName, hp: k.hp, alive: true,
+    x: fromBehind ? -k.spr.w - 2 : W + 2,
+    y: SKY_TOP + 10 + Math.random() * (GROUND_PEAK - SKY_TOP - 30),
+    baseY: 0, t: Math.random() * 1000,
+    vx: (fromBehind ? 1 : -1) * (0.045 + Math.random() * 0.02) * levelMul(game.level),
+    fired: 0
+  };
+  e.baseY = e.y;
+  game.enemies.push(e);
+}
+
+function updateEnemy(e, dt) {
+  if (!e.alive) return;
+  e.t += dt;
+  const mul = levelMul(game.level);
+  const s = game.ship;
+  if (e.kind === 'swooper') {                 // vertical sine swoops
+    e.x += e.vx * dt;
+    e.y = e.baseY + Math.sin(e.t / 260) * 34;
+  } else if (e.kind === 'ltf' || e.kind === 'urbite') {   // track the ship's row
+    e.x += e.vx * dt;
+    if (s) e.y += Math.sign(s.y - e.y) * Math.min(0.03 * mul * dt, Math.abs(s.y - e.y));
+  } else if (e.kind === 'saucer') {           // from behind, then turn in
+    e.x += e.vx * dt;
+    if (e.x > s.x + 60 && e.vx > 0) e.vx = -e.vx * 0.8;
+    e.y += Math.sin(e.t / 300) * 0.02 * dt;
+  } else if (e.kind === 'dramite') {          // fast weave + shots
+    e.x += e.vx * 1.25 * dt;
+    e.y = e.baseY + Math.sin(e.t / 170) * 26;
+  } else {                                    // bynite: slow drift, near-invisible
+    e.x += e.vx * 0.8 * dt;
+    e.y = e.baseY + Math.sin(e.t / 500) * 12;
+  }
+  // clamp above terrain
+  const spr = KINDS[e.kind].spr;
+  const gy = groundY(game.worldX + e.x);
+  if (e.y + spr.h > gy - 2) e.y = gy - 2 - spr.h;
+  if (e.y < SKY_TOP) e.y = SKY_TOP;
+
+  // firing (ltf, dramite, urbite) — bounded pool, A-13 discipline
+  if ((e.kind === 'ltf' || e.kind === 'dramite' || e.kind === 'urbite') &&
+      s && e.fired < 2 && e.x > s.x + 30 && e.x < W - 10 &&
+      Math.random() < dt / 900) {
+    if (spawnShot(e.x, e.y + spr.h / 2)) e.fired++;
+  }
+  // off-screen exit: release
+  if (e.x < -20 || e.x > W + 24) e.alive = false;
+}
+
+/* Enemy shots: fixed pool of 8 (the Galaga scar, kept as discipline).
+   Spawn VALIDATES, release covers every exit axis. */
+const SHOT_POOL = 8;
+function spawnShot(x, y) {
+  if (game.shots.length >= SHOT_POOL) return false;
+  if (!(x >= 2 && x <= W - 2 && y >= SKY_TOP && y <= H - 20)) return false;
+  game.shots.push({ x, y, vx: -ESHOT_SPEED * levelMul(game.level) });
+  return true;
+}
+
+/* ---- Laser — hitscan beam with heat. ----------------------------------- */
+let firePrev = false;
+function tryLaser() {
+  const s = game.ship;
+  if (!s || game.overheated) return;
+  // sourced: the laser will not fire below the terrain's peak height
+  if (s.y + SHIP.h / 2 > GROUND_PEAK + 14) { flashMsg('TOO LOW TO FIRE'); return; }
+  game.heat += HEAT_PER_SHOT;
+  if (game.heat >= HEAT_MAX) {
+    game.heat = HEAT_MAX; game.overheated = true;
+    Sound.overheat(); Speech.say('Laser overheated');
+  }
+  const ly = s.y + (SHIP.h / 2 | 0);
+  game.laser = { t: 80, y: ly, x0: s.x + SHIP.w, x1: W };
+  Sound.laser();
+  // hitscan: first alive enemy whose vertical span covers the beam row
+  let best = null;
+  for (const e of game.enemies) {
+    if (!e.alive || e.x + KINDS[e.kind].spr.w < s.x + SHIP.w) continue;
+    const spr = KINDS[e.kind].spr;
+    if (ly >= e.y && ly < e.y + spr.h) {
+      if (!best || e.x < best.x) best = e;
+    }
+  }
+  // asteroids are laser-killable too
+  let bestR = null;
+  for (const r of game.roids) {
+    const spr = ROID[r.size];
+    if (r.x + spr.w < s.x + SHIP.w) continue;
+    if (ly >= r.y && ly < r.y + spr.h) {
+      if (!bestR || r.x < bestR.x) bestR = r;
+    }
+  }
+  if (best && (!bestR || best.x <= bestR.x)) {
+    best.hp--;
+    if (best.hp <= 0) {
+      best.alive = false;
+      addScore(killPoints(best.kind));
+      game.boom.push({ x: best.x, y: best.y, t: 240, col: KINDS[best.kind].col });
+    }
+    game.laser.x1 = best.x;
+    Sound.hit();
+  } else if (bestR) {
+    bestR.dead = true;
+    addScore(100);                                          // sourced: asteroid 100
+    game.boom.push({ x: bestR.x, y: bestR.y, t: 240, col: TI.darkYellow });
+    game.laser.x1 = bestR.x;
+    Sound.hit();
+  }
+}
+
+function shipDies() {
+  const s = game.ship;
+  if (!s || s.invuln > 0) return;
+  if (game.phase === 'belt' && game.belt) game.belt.survived = false;  // no bonus for dying
+  game.boom.push({ x: s.x, y: s.y, t: 900, col: TI.mediumRed });
+  Sound.death();
+  game.state = 'dying';
+  game.dyingT = 1400;
+}
+
+/* ---- Phases ------------------------------------------------------------ */
+function updatePhase(dt) {
+  if (game.phase === 'announce') {
+    game.announceT -= dt;
+    if (game.announceT <= 0) startWave(WAVE_ORDER[game.waveIdx]);
+    return;
+  }
+  if (game.phase === 'wave') {
+    const w = game.wave;
+    if (w && w.toSpawn > 0) {
+      w.timer -= dt;
+      if (w.timer <= 0) { spawnEnemy(w.kind); w.toSpawn--; w.timer = 700 + Math.random() * 500; }
+    }
+    if (w && w.toSpawn === 0 && game.enemies.every(e => !e.alive)) {
+      game.waveIdx++;
+      game.enemies.length = 0;
+      if (game.waveIdx >= WAVE_ORDER.length) {
+        game.phase = 'belt';
+        game.belt = { toSpawn: 12, timer: 400, survived: true };
+        Speech.say('Asteroid belt ahead');
+      } else startWave(WAVE_ORDER[game.waveIdx]);
+    }
+    return;
+  }
+  if (game.phase === 'belt') {
+    const b = game.belt;
+    if (b.toSpawn > 0) {
+      b.timer -= dt;
+      if (b.timer <= 0) {
+        b.toSpawn--;
+        b.timer = 320 + Math.random() * 420;
+        game.roids.push({
+          x: W + 4, y: SKY_TOP + 8 + Math.random() * (GROUND_PEAK - SKY_TOP - 16),
+          vx: -(0.05 + Math.random() * 0.05), size: Math.random() < 0.5 ? 0 : 1, dead: false
+        });
+      }
+    }
+    if (b.toSpawn === 0 && game.roids.length === 0) {
+      if (b.survived) { addScore(1000); Sound.bonus(); flashMsg('BELT BONUS 1000'); } // sourced
+      game.phase = 'tunnel';
+      game.tunnel = { t: 0, dur: 7000 };
+      Speech.say('Refueling tunnel. Reduce speed.');
+    }
+    return;
+  }
+  if (game.phase === 'tunnel') {
+    const t = game.tunnel;
+    t.t += dt;
+    if (t.t >= t.dur) {
+      game.fuel = 100;
+      Sound.refuel();
+      flashMsg('REFUELED');
+      startLevel(game.level + 1);
+    }
+    return;
+  }
+}
+
+/* Tunnel corridor bounds at screen x, for the current tunnel time. */
+function tunnelBounds(sx, tt) {
+  const prog = Math.min(1, tt / 1500);                       // walls close in
+  const gapHalf = 34 - 16 * prog;
+  const mid = 96 + Math.sin((game.worldX + sx) * 0.008) * 22 * prog;
+  return { top: mid - gapHalf, bot: mid + gapHalf };
+}
+
+/* ---- Update ------------------------------------------------------------ */
+function update(dt) {
+  game.time += dt;
+
+  for (let i = game.boom.length - 1; i >= 0; i--) {
+    game.boom[i].t -= dt;
+    if (game.boom[i].t <= 0) game.boom.splice(i, 1);
+  }
+  if (game.msg) { game.msg.t -= dt; if (game.msg.t <= 0) game.msg = null; }
+  if (game.laser) { game.laser.t -= dt; if (game.laser.t <= 0) game.laser = null; }
+
+  if (game.state === 'title') {
+    if (held.fire() && !firePrev) newGame();
+    firePrev = held.fire();
+    return;
+  }
+  if (game.state === 'entry') {
+    const e = game.entry;
+    const L = held.left(), Rr = held.right(), OK = held.fire();
+    const cyc = d => { e.chars[e.slot] = (e.chars[e.slot] + d + LETTERS.length) % LETTERS.length; };
+    e.hold -= dt;
+    if (L  && !e.pl) { cyc(-1); e.hold = 380; }
+    if (Rr && !e.pr) { cyc(+1); e.hold = 380; }
+    if ((L || Rr) && e.hold <= 0) { cyc(L ? -1 : +1); e.hold = 110; }
+    if (OK && !e.pf) advanceEntry();
+    e.pl = L; e.pr = Rr; e.pf = OK;
+    firePrev = OK;
+    return;
+  }
+  if (game.state === 'over') {
+    if (held.fire() && !firePrev) startEntryOrTitle();
+    firePrev = held.fire();
+    return;
+  }
+  if (game.state === 'dying') {
+    game.dyingT -= dt;
+    firePrev = held.fire();
+    if (game.dyingT <= 0) {
+      game.lives--;
+      if (game.lives < 0) gameOver();
+      else { respawn(); game.state = 'play'; }
+    }
+    return;
+  }
+  if (game.paused) { firePrev = held.fire(); return; }
+
+  /* ---- play ---- */
+  const scrollMul = game.phase === 'tunnel' ? 0.55 : 1;      // tunnel slows you
+  game.worldX += SCROLL * scrollMul * dt;
+
+  // fuel — running dry is fatal [ASSUMED behaviour, tagged in ARCHAEOLOGY]
+  game.fuel -= FUEL_DRAIN * dt;
+  if (game.fuel <= 25 && game.fuel + FUEL_DRAIN * dt > 25) Speech.say('Fuel low');
+  if (game.fuel <= 0) { game.fuel = 0; shipDies(); if (game.state !== 'play') return; }
+
+  // heat
+  if (game.heat > 0) game.heat = Math.max(0, game.heat - HEAT_DECAY * dt);
+  if (game.overheated && game.heat <= HEAT_OK) { game.overheated = false; flashMsg('LASER READY'); }
+
+  const s = game.ship;
+  if (s) {
+    if (s.invuln > 0) s.invuln -= dt;
+    if (held.left())  s.x -= SHIP_SPEED * dt;
+    if (held.right()) s.x += SHIP_SPEED * dt;
+    if (held.up())    s.y -= SHIP_SPEED * dt;
+    if (held.down())  s.y += SHIP_SPEED * dt;
+    s.x = Math.max(2, Math.min(SHIP_X_MAX, s.x));
+    s.y = Math.max(SKY_TOP, Math.min(H - 24, s.y));
+    const fr = held.fire();
+    if (fr && !firePrev) tryLaser();
+    firePrev = fr;
+
+    // terrain collision — the scrolling world's teeth (SCOPE P1)
+    if (s.invuln <= 0) {
+      const gy = groundY(game.worldX + s.x + SHIP.w / 2);
+      if (s.y + SHIP.h > gy) { shipDies(); return; }
+      if (game.phase === 'tunnel') {
+        const b = tunnelBounds(s.x + SHIP.w / 2, game.tunnel.t);
+        if (s.y < b.top || s.y + SHIP.h > b.bot) { shipDies(); return; }
+      }
+    }
+  }
+
+  updatePhase(dt);
+
+  for (const e of game.enemies) updateEnemy(e, dt);
+
+  // asteroids
+  for (let i = game.roids.length - 1; i >= 0; i--) {
+    const r = game.roids[i];
+    r.x += r.vx * dt;
+    if (r.dead || r.x < -10) {
+      game.roids.splice(i, 1);
+      continue;
+    }
+    if (s && s.invuln <= 0) {
+      const spr = ROID[r.size];
+      if (r.x < s.x + SHIP.w && r.x + spr.w > s.x &&
+          r.y < s.y + SHIP.h && r.y + spr.h > s.y) {
+        game.roids.splice(i, 1);
+        game.belt && (game.belt.survived = false);
+        shipDies(); return;
+      }
+    }
+  }
+
+  // enemy shots — substepped, released on every exit (INV-1/INV-12, A-13)
+  for (let i = game.shots.length - 1; i >= 0; i--) {
+    const sh = game.shots[i];
+    let released = false;
+    const steps = Math.max(1, Math.ceil(Math.abs(sh.vx * dt) / SUB_PX));
+    for (let k = 0; k < steps && !released; k++) {
+      sh.x += sh.vx * dt / steps;
+      if (sh.x < -4 || sh.x > W + 4) released = true;
+      else if (s && s.invuln <= 0 &&
+               sh.x >= s.x && sh.x < s.x + SHIP.w &&
+               sh.y >= s.y && sh.y < s.y + SHIP.h) {
+        released = true;
+        shipDies();
+      }
+    }
+    if (released) game.shots.splice(i, 1);
+    if (game.state !== 'play') return;
+  }
+
+  // enemy-vs-ship ramming (2 substeps: strides stay under the ship's height)
+  if (s && s.invuln <= 0) {
+    for (const e of game.enemies) {
+      if (!e.alive) continue;
+      const spr = KINDS[e.kind].spr;
+      for (let k = 0; k < 2; k++) {
+        const ex = e.x - e.vx * dt * k / 2;
+        if (ex < s.x + SHIP.w && ex + spr.w > s.x &&
+            e.y < s.y + SHIP.h && e.y + spr.h > s.y) {
+          e.alive = false;
+          game.boom.push({ x: e.x, y: e.y, t: 240, col: KINDS[e.kind].col });
+          shipDies(); return;
+        }
+      }
+    }
+  }
+}
+
+/* ---- Entry / leaderboard (shared protocol) ----------------------------- */
+function startEntryOrTitle() {
+  if (HiScore.qualifies(game.score)) {
+    game.entry = { chars: [0,0,0], slot: 0, hold: 0, pl: true, pr: true, pf: true };
+    game.state = 'entry';
+  } else {
+    game.state = 'title';
+  }
+}
+function advanceEntry() {
+  const e = game.entry;
+  if (!e) return;
+  e.slot++;
+  if (e.slot > 2) {
+    game.lastRank = HiScore.add(e.chars.map(i => LETTERS[i]).join(''), game.score);
+    game.entry = null;
+    game.state = 'title';
+  }
+}
+
+/* ---- Render ------------------------------------------------------------ */
+function render() {
+  const now = performance.now();
+  cx.fillStyle = TI.black;
+  cx.fillRect(0, 0, W, H);
+
+  // stars
+  cx.fillStyle = '#333';
+  for (let i = 0; i < 24; i++) {
+    const sx = (i * 47 + 13 - game.worldX * 0.15) % W, sy = (i * 31) % (GROUND_PEAK - 20) + SKY_TOP;
+    if (!(i % 5 === 0 && ((now / 500 | 0) % 3) === 0))
+      cx.fillRect(((sx + W) % W) | 0, sy, 1, 1);
+  }
+
+  // HUD
+  text('SCORE', 4, 2, TI.gray);
+  text(String(game.score).padStart(6,'0'), 40, 2, TI.white);
+  const hs = 'HI ' + String(Math.max(topScore(), game.score)).padStart(6,'0');
+  text(hs, W - textW(hs) - 4, 2, TI.gray);
+  if (Sound.muted) center('SOUND OFF', 2, '#555');
+
+  if (game.state === 'title') {
+    center('PARSEC', 34, TI.mediumRed);
+    center('TI-99/4A - 1982', 48, '#444');
+    const list = HiScore.list();
+    center('HIGH SCORES', 62, TI.cyan);
+    if (!list.length) center('NO SCORES YET', 76, '#555');
+    else {
+      let y = 74;
+      list.slice(0, 6).forEach((e, i) => {
+        const fresh = game.lastRank === i + 1;
+        const blink = fresh && ((now/300|0) % 2);
+        const col = blink ? TI.white : fresh ? TI.lightYellow : TI.gray;
+        text(String(i+1), 66, y, '#555');
+        text(e.n, 80, y, col);
+        text(String(e.s).padStart(6,'0'), 112, y, col);
+        y += 9;
+      });
+    }
+    center(matchMedia('(hover: none)').matches ? 'TAP FIRE TO START' : 'PRESS SPACE TO START',
+           136, ((now/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
+    center('FLY LOW TO REFUEL - WATCH THE HEAT', 152, '#555');
+    center('SAUCERS ATTACK FROM BEHIND', 162, '#555');
+    // terrain preview
+    cx.fillStyle = TI.darkGreen;
+    for (let x = 0; x < W; x++) {
+      const gy = groundY(x + now * 0.03);
+      cx.fillRect(x, gy, 1, H - gy);
+    }
+    return;
+  }
+
+  if (game.state === 'entry') {
+    center('NEW HIGH SCORE', 50, TI.lightYellow);
+    center(String(game.score), 66, TI.white);
+    center('ENTER YOUR INITIALS', 84, '#666');
+    const e = game.entry;
+    for (let i = 0; i < 3; i++) {
+      const x = (W/2|0) - 21 + i*16;
+      const active = i === e.slot;
+      const blink = active && ((now/300|0) % 2);
+      text(LETTERS[e.chars[i]], x, 102, blink ? TI.white : active ? TI.lightYellow : TI.gray);
+      if (active) { cx.fillStyle = TI.lightYellow; cx.fillRect(x, 112, 5, 1); }
+    }
+    center(matchMedia('(hover: none)').matches
+      ? 'SWIVEL PICKS - FIRE LOCKS IN'
+      : 'ARROWS OR TYPE - SPACE LOCKS IN', 132, '#555');
+    return;
+  }
+
+  // terrain
+  cx.fillStyle = TI.darkGreen;
+  for (let x = 0; x < W; x++) {
+    const gy = groundY(game.worldX + x);
+    cx.fillRect(x, gy, 1, H - gy);
+  }
+  // tunnel walls
+  if (game.phase === 'tunnel' && game.tunnel) {
+    cx.fillStyle = TI.darkRed;
+    for (let x = 0; x < W; x++) {
+      const b = tunnelBounds(x, game.tunnel.t);
+      cx.fillRect(x, SKY_TOP, 1, Math.max(0, b.top - SKY_TOP));
+      const gy = groundY(game.worldX + x);
+      cx.fillRect(x, b.bot | 0, 1, Math.max(0, gy - b.bot));
+    }
+  }
+
+  // laser
+  if (game.laser) {
+    cx.fillStyle = ((now / 40 | 0) % 2) ? TI.white : TI.cyan;
+    cx.fillRect(game.laser.x0 | 0, game.laser.y | 0, (game.laser.x1 - game.laser.x0) | 0, 1);
+  }
+
+  // enemies / asteroids / shots
+  for (const e of game.enemies)
+    if (e.alive) draw(KINDS[e.kind].spr, e.x, e.y,
+                      e.kind === 'urbite' && e.hp === 1 ? TI.lightRed : KINDS[e.kind].col);
+  for (const r of game.roids) draw(ROID[r.size], r.x, r.y, TI.darkYellow);
+  cx.fillStyle = TI.lightRed;
+  for (const sh of game.shots) cx.fillRect(sh.x|0, sh.y|0, 3, 1);
+
+  // ship
+  const s = game.ship;
+  if (s && game.state !== 'dying') {
+    const blink = s.invuln > 0 && ((now/120|0) % 2);
+    if (!blink) draw(SHIP, s.x, s.y, TI.white);
+  }
+
+  for (const b of game.boom) draw(BOOM, b.x, b.y, b.col);
+
+  // bottom HUD: fuel + heat bars, lives, level
+  cx.fillStyle = '#1a1a1a'; cx.fillRect(0, H - 12, W, 12);
+  text('FUEL', 4, H - 9, TI.gray);
+  cx.fillStyle = game.fuel < 25 ? TI.mediumRed : TI.lightGreen;
+  cx.fillRect(30, H - 8, (game.fuel * 0.5) | 0, 4);
+  text('HEAT', 92, H - 9, TI.gray);
+  cx.fillStyle = game.overheated ? TI.mediumRed : TI.darkYellow;
+  cx.fillRect(118, H - 8, (game.heat * 0.4) | 0, 4);
+  for (let i = 0; i < Math.min(game.lives, 4); i++)
+    draw(SHIP, 168 + i * 16, H - 11, TI.lightGreen);
+  const lv = 'LV ' + game.level;
+  text(lv, W - textW(lv) - 4, H - 9, TI.darkYellow);
+
+  if (game.phase === 'announce') center(game.announceText, 80, TI.lightYellow);
+  if (game.msg) center(game.msg.text, 60, TI.lightYellow);
+  if (game.paused) center('PAUSED', 90, TI.lightYellow);
+  if (game.state === 'over') {
+    center('GAME OVER', 74, TI.mediumRed);
+    if (HiScore.qualifies(game.score)) center('NEW HIGH SCORE', 90, TI.lightYellow);
+    center('FIRE TO CONTINUE', 104, TI.gray);
+  }
+}
+
+/* ---- Input ------------------------------------------------------------- */
+const keys = Object.create(null);
+addEventListener('keydown', e => {
+  if (Feedback.isOpen) {
+    if (e.key === 'Escape') Feedback.close();
+    return;
+  }
+  if ([' ','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  Sound.unlock();
+  if (e.key === 'p' || e.key === 'P') { if (game.state === 'play') game.paused = !game.paused; }
+  if (e.key === 'm' || e.key === 'M') Sound.toggle();
+  if (e.key === 'f' || e.key === 'F') Feedback.open();
+  if (e.key === 'Escape') toTitle();
+  if (game.state === 'entry' && game.entry) {
+    const up = e.key.toUpperCase();
+    if (up.length === 1 && LETTERS.includes(up)) {
+      game.entry.chars[game.entry.slot] = LETTERS.indexOf(up);
+      advanceEntry();
+    } else if (e.key === 'Backspace' && game.entry.slot > 0) {
+      game.entry.slot--;
+    }
+  }
+});
+addEventListener('keyup', e => { if (Feedback.isOpen) return; keys[e.key] = false; });
+
+function toTitle() {
+  if (game.state === 'title') return;
+  game.paused = false;
+  game.entry = null;
+  game.state = 'title';
+}
+
+const touch = { left:false, right:false, up:false, down:false, fire:false };
+function bindPad(id, prop) {
+  const el = document.getElementById(id);
+  const on  = e => { e.preventDefault(); Sound.unlock(); touch[prop] = true;  };
+  const off = e => { e.preventDefault(); touch[prop] = false; };
+  el.addEventListener('touchstart', on,  {passive:false});
+  el.addEventListener('touchend',   off, {passive:false});
+  el.addEventListener('touchcancel',off, {passive:false});
+  el.addEventListener('mousedown',  on);
+  el.addEventListener('mouseup',    off);
+  el.addEventListener('mouseleave', off);
+}
+bindPad('bL','left'); bindPad('bR','right'); bindPad('bU','up');
+bindPad('bD','down'); bindPad('bF','fire');
+
+function bindTap(id, fn) {
+  const el = document.getElementById(id);
+  const h = e => { e.preventDefault(); Sound.unlock(); fn(); };
+  el.addEventListener('touchstart', h, {passive:false});
+  el.addEventListener('click', h);
+}
+
+/* ---- SWIVEL STICK — shared contract, two-axis for free flight. --------- */
+const Stick = (() => {
+  const DEAD = 9;
+  let stickId = null, ox = 0, oy = 0, cxp = 0, cyp = 0, fireId = null;
+  const state = { active:false, ox:0, dx:0, dy:0 };
+  function apply() {
+    const dx = cxp - ox, dy = cyp - oy;
+    state.dx = dx; state.dy = dy;
+    touch.left  = state.active && dx < -DEAD;
+    touch.right = state.active && dx >  DEAD;
+    touch.up    = state.active && dy < -DEAD;
+    touch.down  = state.active && dy >  DEAD;
+  }
+  function start(e) {
+    const r = cv.getBoundingClientRect();
+    for (const t of e.changedTouches) {
+      const leftHalf = (t.clientX - r.left) < r.width / 2;
+      if (leftHalf && stickId === null) {
+        stickId = t.identifier; ox = cxp = t.clientX; oy = cyp = t.clientY;
+        state.active = true; state.ox = t.clientX - r.left;
+      } else if (!leftHalf && fireId === null) {
+        fireId = t.identifier; touch.fire = true;
+      }
+    }
+    apply(); e.preventDefault(); Sound.unlock();
+  }
+  function move(e) {
+    for (const t of e.changedTouches) if (t.identifier === stickId) { cxp = t.clientX; cyp = t.clientY; }
+    apply(); e.preventDefault();
+  }
+  function end(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = null; state.active = false;
+                                      touch.left = touch.right = touch.up = touch.down = false; }
+      if (t.identifier === fireId)  { fireId = null; touch.fire = false; }
+    }
+    apply();
+  }
+  cv.addEventListener('touchstart',  start, { passive:false });
+  cv.addEventListener('touchmove',   move,  { passive:false });
+  cv.addEventListener('touchend',    end,   { passive:false });
+  cv.addEventListener('touchcancel', end,   { passive:false });
+  return state;
+})();
+
+bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
+bindTap('bT', () => toTitle());
+bindTap('bM', () => Sound.toggle());
+bindTap('bFB', () => Feedback.open());
+
+/* Virtual input for the sim harness — bots drive THESE and nothing else. */
+const simInput = { left:false, right:false, up:false, down:false, fire:false };
+const held = {
+  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right || simInput.right,
+  up:    () => keys['ArrowUp']    || keys['w'] || keys['W'] || touch.up    || simInput.up,
+  down:  () => keys['ArrowDown']  || keys['s'] || keys['S'] || touch.down  || simInput.down,
+  fire:  () => keys[' '] || keys['Enter'] || touch.fire || simInput.fire
+};
+
+/* ---- HIGH SCORE TABLE — shared protocol -------------------------------- */
+const HiScore = (() => {
+  const KEY = 'arcade.parsec.scores', MAX = 8;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+                       catch (e) { return []; } };
+  const store = l => { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} };
+  return {
+    list: load,
+    qualifies(score) {
+      if (score <= 0) return false;
+      const l = load();
+      return l.length < MAX || score > l[l.length - 1].s;
+    },
+    add(name, score) {
+      const l = load();
+      l.push({ n: name, s: score, d: new Date().toISOString().slice(0, 10) });
+      l.sort((a, b) => b.s - a.s);
+      const cut = l.slice(0, MAX);
+      store(cut);
+      return cut.findIndex(e => e.s === score && e.n === name) + 1;
+    },
+    clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  };
+})();
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+function topScore() { const l = HiScore.list(); return l.length ? l[0].s : 0; }
+try { localStorage.removeItem('parsec.high'); } catch (e) {}
+
+/* ---- FEEDBACK — shared contract pilot (rung 5). ------------------------ */
+const Feedback = (() => {
+  const ISSUES = 'https://github.com/Sobevista/arcade-progression/issues/new';
+  const root = document.getElementById('fb');
+  const ta = document.getElementById('fbText');
+  const ctxEl = document.getElementById('fbCtx');
+  const note = document.getElementById('fbNote');
+  let isOpen = false;
+  function context() {
+    return [
+      'game: PARSEC (rung 5, TI-99/4A)',
+      'state: ' + game.state + (game.paused ? ' (paused)' : '') + '  phase: ' + game.phase,
+      'level: ' + game.level + '  fuel: ' + (game.fuel | 0) + '  heat: ' + (game.heat | 0),
+      'score: ' + game.score + '  top: ' + topScore(),
+      'date: ' + new Date().toISOString(),
+      'viewport: ' + window.innerWidth + 'x' + window.innerHeight + ' @' + scale + 'x' +
+        (document.body.classList.contains('touch') ? ' touch' : ''),
+      'ua: ' + navigator.userAgent
+    ].join('\n');
+  }
+  function buildReport() {
+    const t = ta.value.trim();
+    return '### Playtest report\n\n' + (t || '(no text entered)') +
+           '\n\n---\n```\n' + context() + '\n```\n';
+  }
+  function open() {
+    if (isOpen) return;
+    isOpen = true;
+    if (game.state === 'play') game.paused = true;
+    for (const k in keys) keys[k] = false;
+    touch.left = touch.right = touch.up = touch.down = touch.fire = false;
+    note.textContent = '';
+    ctxEl.textContent = context();
+    root.classList.add('open');
+    ta.focus();
+  }
+  function close() {
+    if (!isOpen) return;
+    isOpen = false;
+    root.classList.remove('open');
+    ta.blur();
+  }
+  document.getElementById('fbClose').addEventListener('click', close);
+  document.getElementById('fbGh').addEventListener('click', () => {
+    const url = ISSUES + '?title=' + encodeURIComponent('[parsec] playtest report') +
+                '&body=' + encodeURIComponent(buildReport());
+    window.open(url, '_blank');
+    note.textContent = 'OPENED GITHUB IN A NEW TAB';
+  });
+  document.getElementById('fbCopy').addEventListener('click', () => {
+    const r = buildReport();
+    const done = () => { note.textContent = 'COPIED - PASTE IT TO DANIEL'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(r).then(done, () => fallback());
+    } else fallback();
+    function fallback() {
+      ta.value = r; ta.select();
+      try { document.execCommand('copy'); done(); }
+      catch (e) { note.textContent = 'COPY FAILED - SELECT AND COPY BY HAND'; }
+    }
+  });
+  return { open, close, buildReport, get isOpen() { return isOpen; } };
+})();
+
+/* ---- Loop -------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(50, now - last);   // INV-2
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---- Test hook (INV-6) + sim contract ---------------------------------- */
+window.__parsec = {
+  get state()   { return game.state; },
+  get score()   { return game.score; },
+  get alive()   { return game.enemies.filter(e => e.alive).length; },
+  get entities(){ return game.enemies.length + game.shots.length +
+                         game.roids.length + game.boom.length; },
+  get speechCount() { return Speech.count; },
+  game, newGame, startLevel, respawn, toTitle, Sound, Speech, HiScore, LETTERS,
+  startEntryOrTitle, advanceEntry, topScore, Stick, TI, Feedback,
+  KINDS, WAVE_ORDER, WAVE_SIZE, killPoints, levelMul, groundY, tunnelBounds,
+  spawnEnemy, spawnShot, tryLaser,
+  geom: { W, H, PADDLE_SPEED: SHIP_SPEED, SHIP_W: SHIP.w, SHIP_H: SHIP.h,
+          SHOT_POOL, RAMP_CAP_LEVEL, GROUND_PEAK, SKY_TOP, SHIP_X_MAX },
+  sim: {
+    input: simInput,
+    step(dt) { update(dt); },
+    reset() { simInput.left = simInput.right = simInput.up = simInput.down = simInput.fire = false; },
+    observe() {
+      const s = game.ship;
+      return { state: game.state, phase: game.phase, score: game.score,
+               level: game.level, waveIdx: game.waveIdx, lives: game.lives,
+               fuel: game.fuel, heat: game.heat, overheated: game.overheated,
+               alive: game.enemies.filter(e => e.alive).length,
+               roids: game.roids.length, shots: game.shots.length,
+               paddleX: s ? s.x : 0,
+               ship: s ? { x: s.x, y: s.y, invuln: s.invuln } : null,
+               worldX: game.worldX };
+    }
+  }
+};
+</script>

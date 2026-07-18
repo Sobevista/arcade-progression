@@ -407,6 +407,128 @@ learned pacing.
 
 ---
 
+## Rung 5 — TI-99/4A (Texas Instruments, 1981 machine; games 1980–82)
+
+Dug 2026-07-18, before any code. This is the homage rung: the series palette has been
+this machine's TMS9918A from rung 2 onward — now the machine itself is the subject.
+Two games chosen for maximum orthogonality: **Hunt the Wumpus** (1980, deduction) and
+**Parsec** (1982, the flagship scroller).
+
+### The machine
+
+| | |
+|---|---|
+| CPU | TMS9900, a true 16-bit minicomputer chip at 3 MHz — architecturally the most powerful CPU in any machine in our ladder so far ([Wikipedia](https://en.wikipedia.org/wiki/TI-99/4A)) |
+| CPU RAM | **256 bytes.** That is the entire fast memory — the "scratchpad" at >8300, the only RAM on the 16-bit bus. Even the CPU's registers R0–R15 live in it (the chip has only three physical registers) ([Nouspikel](https://www.unige.ch/medecine/nouspikel/ti99/architec.htm)) |
+| Main RAM | 16 KB — but it belongs to the **video chip**. The CPU cannot address it; every byte moves through the TMS9918A's I/O port, slowly ([Nouspikel](https://www.unige.ch/medecine/nouspikel/ti99/architec.htm)) |
+| Software layer | Most console software, including TI BASIC, is **GPL bytecode interpreted from GROM** — a second interpretation layer that made the machine famously slower than its CPU deserved ([Nouspikel GPL](https://www.unige.ch/medecine/nouspikel/ti99/gpl.htm)) |
+| Sprites | TMS9918A: 32 hardware sprites, 4 per scanline, and **automotion** — the VDP moves sprites autonomously with signed 8-bit velocities, no CPU per frame |
+| Scrolling | **None in hardware.** The TMS9918A has no scroll register |
+| Speech | The Solid State Speech Synthesizer peripheral — LPC synthesis (TMS5200 family), a phrase ROM, and per-game vocabularies |
+| Colour | 15 fixed colours + transparent. Real colour at last — the cellophane era (A-3/A-7) is over, and this exact palette is our series constraint |
+
+### Finding 1 — the defining constraint was memory topology, not memory size (A-17)
+
+The spec sheet says 16 KB. The truth is **256 bytes** — everything else lives behind
+the video chip's port. A game's hot loop either fits in the scratchpad or crawls.
+Parsec's famous smooth ground scroll worked because the scroll routine was **copied
+into the 256-byte console RAM and run from there** ([Xona rare facts](https://xona.com/about/computers/ti994a/parsec.html)).
+The machine had plenty of memory; it had almost no memory *near the CPU*.
+
+**The transferable lesson (A-17):** where memory lives shapes software more than how
+much exists. The fast region is always small, so *what you promote into it* is the
+design decision. Modern costume: cache lines, hot paths, CPU↔GPU transfers. The 1982
+version was literally hand-carrying your inner loop into 256 bytes.
+
+### Finding 2 — Parsec's difficulty ceiling is an integer width (A-18)
+
+Levels ramp by starting enemies closer and faster. Level 16 repeats forever — and
+eventually the game becomes unplayable, because sprite automotion velocities are
+**signed 8-bit**: past +127 a speed wraps to −128 ([Xona](https://xona.com/about/computers/ti994a/parsec.html)).
+The endgame wall was never designed. It is the datatype.
+
+**The transferable lesson (A-18):** an unexamined numeric limit will eventually become
+gameplay, and the player will meet it before the author does. Kin of A-1 (identity
+from unchosen constraints) — but here it's the *ending* that nobody wrote. Every ramp
+needs an authored ceiling, or its real ceiling is whatever overflows first.
+
+### Finding 3 — speech as an information channel, not a gimmick (A-19)
+
+Speech during gameplay was reportedly considered impossible on the machine before
+Parsec shipped it ([Xona](https://xona.com/about/computers/ti994a/parsec.html), [HBFS](https://hbfs.wordpress.com/2008/12/16/tunnels-of-doom/)).
+And the game spends it functionally: wave announcements, enemy warnings, fuel alerts —
+information delivered **off-screen** so the eyes stay on the fight. The first audio in
+our ladder that carries *semantic* content rather than feedback.
+
+**The transferable lesson (A-19):** a new output channel earns its keep when it carries
+information the busy channel (the eyes) would otherwise drop. Voice that duplicates
+the screen is decoration; voice that replaces a glance is bandwidth.
+
+### Finding 4 — the display re-gridded the game the designer built to escape grids (A-20)
+
+Gregory Yob wrote the original Hunt the Wumpus (1973) specifically because every
+hide-and-seek game of the era ran on a 10×10 grid — he built his cave as a
+**dodecahedron** (20 rooms, 3 tunnels each) to make topology, not coordinates, the
+puzzle ([Wikipedia](https://en.wikipedia.org/wiki/Hunt_the_Wumpus)). The TI-99/4A
+version (Kevin Kenney, 1980) is a fine adaptation — and it is a **wrapping grid**
+([4A-Pedia](https://4apedia.com/index.php/Hunt_the_Wumpus)). A character-cell display
+renders grids natively; drawing an arbitrary graph is hard. The medium quietly bent
+the design back toward the exact thing its designer had fled.
+
+**The transferable lesson (A-20):** the rendering technology has opinions about the
+design, and it lobbies silently. When a port changes a game's *shape*, look for the
+display in the room. (The wrap is what saves the TI version: edges stop being safe
+walls, so the deduction stays honest.)
+
+### The Wumpus clue economy — the whole game is information design
+
+Sourced rules of the TI version ([4A-Pedia](https://4apedia.com/index.php/Hunt_the_Wumpus)):
+bloodspots appear in **every cavern within two tunnels of the Wumpus**; **green-walled
+caverns** flag an adjacent slime pit (two exist); bats relocate you randomly; one
+arrow, fired into an adjacent cavern — hit wins, miss loses. Explored caverns stay
+visible; difficulty changes the cavern count (roughly 32 / 24 / 16 — *fewer* caverns
+is harder, because each clue then covers proportionally more of the map and carries
+less information). The game is turn-based inference with a renderer on top — and it
+sits near the *root* of our ladder chronologically (1973 origin), before most action
+genres existed. The ladder was never "simple action → complex action."
+
+### Open / unverified
+
+- **Parsec wave structure per level** (order and size of the six enemy groups, when
+  the asteroid belt and refuel tunnel arrive). Scoring pairs are sourced (100/200/300
+  by class, +100 per level, asteroids 100, belt bonus 1,000 — [Creative Computing review](https://www.atarimagazines.com/creative/v9n9/135_Fun_and_games_with_the_TI.php));
+  the exact sequencing in our build is an approximation. **[ASSUMED]**
+- **Parsec fuel-exhaustion behaviour** (crash vs. dead stick) and exact heat/fuel
+  rates. **[ASSUMED, tuned by play]**
+- **Wumpus bat-adjacency warning.** Yob's original warns "bats nearby"; whether the
+  TI version gives any bat warning is unverified. We warn on adjacency, mirroring
+  Yob. **[ASSUMED]**
+- **Wumpus arrow reach.** TI manual language implies firing into an adjacent cavern
+  by direction; Yob's five-cave crooked arrows are definitely NOT the TI mechanic.
+  **[ASSUMED: one cavern]**
+
+### Our Suffering Ledger for rung 5
+
+| Constraint | Verdict | Reasoning |
+|---|---|---|
+| **Wumpus:** wrapping-grid maze, cavern count by difficulty (32/24/16) | **KEEP** | The TI adaptation is the rung's subject, and the wrap keeps edges dangerous (A-20) |
+| **Wumpus:** clue radii exactly — bloodspots ≤ 2 tunnels, green walls adjacent to pits | **KEEP exactly** | The clue economy IS the game; changing a radius changes everything |
+| **Wumpus:** one arrow, miss = loss | **KEEP** | The commitment moment. Five crooked arrows are Yob's game, not TI's |
+| **Wumpus:** bats as random relocation | **KEEP** | The chaos agent that keeps pure deduction humble — a re-randomizer mid-proof |
+| **Wumpus:** fog of war (explored persists, unexplored invisible) | **KEEP** | The map is the player's memory made visible — the interface teaches note-taking |
+| **Wumpus:** Blindfold / Express modes | **SKIP v1** | Modes multiply the test surface; Normal mode carries the lesson |
+| **Parsec:** scrolling terrain + terrain collision | **KEEP — the rung's technical heart** | The scroll is what the 256-byte trick bought (A-17). First scrolling game in the ladder |
+| **Parsec:** fuel + refuel tunnel at reduced speed | **KEEP** | The resource loop, and risk priced into the reward (slow flight in a narrow corridor) |
+| **Parsec:** laser heat | **KEEP** | Fire discipline in continuous form — rungs 2/4 budgeted shots; Parsec prices *sustained* fire |
+| **Parsec:** six enemy classes, sourced score pairs, +100/level | **KEEP** | The scoring table is sourced; behaviours approximated [ASSUMED] |
+| **Parsec:** asteroid belt between levels | **KEEP** | The pacing beat (A-16's rhythm, one year after Galaga) |
+| **Parsec:** speech during play | **KEEP the result** via the browser's built-in speech synthesis, optional | A-19 is the lesson; LPC silicon is not. Game fully playable silent |
+| **Parsec:** 8-bit automotion overflow endgame | **SKIP the bug, KEEP the scar** | Same ruling as Galaga's leak: recorded (A-18), not reproduced. Our ramp gets an authored cap |
+| **Parsec:** bitmap-mode scanline tricks | **SKIP** | We have real colour and a real framebuffer; the lesson is recorded in A-17 |
+| GPL / TMS9900 assembly | **SKIP** | Teaches 1981 toolchains, not game design |
+
+---
+
 ## Running list of transferable lessons
 
 *The trove. One line per finding, sourced, added as each rung is dug.*
@@ -429,3 +551,7 @@ learned pacing.
 | A-14 | When a constraint recedes, the next competitive axis is whatever it was suppressing — sprite hardware made motion free, so choreography became the content. Galaga's identity is authored path data, not mechanics | 4 | 1978 stepped march → 1981 entrance trains and looping dives |
 | A-15 | Don't force the risky play — *price* it. Diving enemies worth 2×, a boss with escorts 10×; and the capture mechanic converts a lost life into a potential upgrade the player can invest in. Reward carries its own cost (dual fighter = double hitbox) | 4 | Galaga's score table + tractor beam / rescue loop |
 | A-16 | A zero-threat stage was an invention: difficulty needs a rhythm, not just a slope. The challenging stage converts taught skill into a pure test and pays the pacing cost back in engagement | 4 | stage 3 + every 4th; 10,000 perfect bonus; hit/miss ratio at game over |
+| A-17 | Memory topology beats memory size — the fast region is always small, and what you promote into it is the design decision | 5 | TI-99/4A: 256 bytes of true CPU RAM; Parsec's scroll routine hand-carried into the scratchpad |
+| A-18 | An unexamined numeric limit eventually becomes gameplay; every ramp needs an authored ceiling or its real ceiling is whatever overflows first | 5 | Parsec's endgame wall is signed 8-bit sprite velocity wrapping at +127 |
+| A-19 | A new output channel earns its keep when it carries information the busy channel would drop — voice that replaces a glance is bandwidth, voice that duplicates the screen is decoration | 5 | Parsec's in-game speech: wave warnings and fuel alerts while the eyes stay on the fight |
+| A-20 | The rendering technology lobbies silently for shapes it draws natively; when a port changes a game's topology, look for the display in the room | 5 | Yob's anti-grid dodecahedron (1973) became a wrapping grid on a character-cell display (1980) |

@@ -372,6 +372,15 @@ Now implemented. It reads as a dramatic spike rather than a death spiral specifi
 
 ---
 
+## Rung 5 — TI-99/4A (Wumpus + Parsec) — decisions
+
+| # | Decision | Chose | Reasoning | Re-pick trigger |
+|---|---|---|---|---|
+| UX-27 | Wumpus score for the shared leaderboard | Win = difficulty base (600/900/1200) − 5/move, floor 100; loss = 0 | The 1980 original has no score; the leaderboard is a series contract. Rewarding fewer moves rewards *sharper deduction* — the game's own virtue. Declared adaptation, same class as A-12's backported initials | If playtest shows move-count pressure making players reckless (rushing into unproven caverns to protect score) — then flatten to difficulty base only |
+| UX-28 | Feedback contract shape | In-game overlay (pause + textarea) → prefilled GitHub issue URL, clipboard fallback; piloted on rung 5 only | Reports must be sendable mid-play or the moment is lost. Issue URL needs zero backend and lands tickets where the repo already works; clipboard covers testers without GitHub accounts (the kids). DOM modal because typing needs a real textarea | After the family pilot: roll out fleet-wide (empty the `pilotOnly` list in conformance.js) or redesign per what testers actually did |
+| UX-29 | Parsec raster | 256×192 — the TI-99/4A's own resolution, landscape | Rung 5's subject is the machine; using its true raster is the homage where it belongs (in craft). Wumpus stays on the series 224×288 portrait since it has no scrolling axis | If phone-portrait play makes the landscape canvas unusably small — revisit with a rotated layout |
+| UX-30 | Parsec marathon at the ramp cap | Authored ceiling at level 8 (1.77×), levels then repeat at constant difficulty — long runs possible for a skilled player | Sourced: level 16 repeats and 2M-point marathons were the original's celebrated culture. A-18 forbids the overflow wall, not the marathon | If family playtest finds sessions overstaying their welcome, add fatigue (fuel drain scaling) — a *deliberate* ceiling, never an accidental one |
+
 ## Open UX debts found during the build
 
 Named, not silently carried:
