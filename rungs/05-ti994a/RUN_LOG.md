@@ -100,3 +100,9 @@ All through `sim.step()`, zero console messages:
   mechanics; it has no category for experience (second-oracle law). Wumpus clue
   readability, Parsec difficulty feel, the feedback button in real kids' hands — all
   human questions.
+
+## 2026-07-18 — W9 ruled
+
+Daniel accepted the ratio evidence: deduction-beats-luck proven at >100×; the 60%
+number recorded as a guess above the 1980 design's structural ceiling. Wumpus rung
+criteria now closed except the human playtest gate.

@@ -89,14 +89,11 @@ not an oversight. It should be revisited the moment either becomes true:
   worth gating (the browser-driven pass criteria would need a headless runner).
 - **Audio verification:** synthesised SFX are proven to *construct and schedule*
   correctly, but audibility on a given device is a human check. No automated oracle.
-- **Rung 5 W9 ruling (DANIEL):** the Wumpus SCOPE asked the reasoning bot to win ≥60%
-  on EASY. Measured ceiling across three bot generations: **55–58%** vs a random
-  baseline of **0.5%** — zero unsound inferences, every loss a forced gamble, because
-  the sourced 1980 clue economy warns of pits only at distance 1 (an irreducible luck
-  floor, ~40% of games). The claim the criterion existed for (deduction beats luck) is
-  proven at >100×; the number 60% was a pre-build guess above the original design's
-  structural ceiling. Call needed: accept the ratio evidence as the pass, or rule the
-  fidelity-vs-luck tradeoff differently. The game was NOT changed to chase the number.
+- ~~Rung 5 W9 ruling~~ **RULED 2026-07-18 (Daniel): ratio evidence accepted.** W9's
+  intent (deduction beats luck) stands proven at >100× (reasoner 55–58% vs random
+  0.5%, zero unsound inferences); the 60% figure is recorded as a pre-build guess
+  that sat above the sourced 1980 design's structural luck floor (pit warnings only
+  at distance 1). Game unchanged. Criterion lesson stays on the record in RUN_LOG.
 - **Rung 5 P10 sub-criterion (recorded defect):** "competent survival time strictly
   decreases per level" measured the wrong proxy — level duration is fixed content
   length. Death-level distribution carries the difficulty signal instead (firstTimer
