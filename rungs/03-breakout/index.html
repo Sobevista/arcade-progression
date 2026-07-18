@@ -155,12 +155,18 @@ const PADDLE_FULL = 24, PADDLE_H = 3;
 const BALL      = 3;
 
 /* Row colours and values, top row first. Two rows per colour (1976).
-   The TI palette has no true orange — lightRed is the nearest available. */
+   The TI palette has no true orange. First attempt used lightRed, which read as
+   salmon and sat too close to the red band above it — and the 1/3/5/7 scoring is
+   meant to be a VISIBLE risk gradient, so that was costing the player real
+   information. Daniel's call 2026-07-18: legibility wins, this is a UX problem
+   not a fidelity requirement. darkYellow (gold) is clearly distinct from the red
+   above it, and green sits between it and the pale yellow below, so no two
+   adjacent bands are confusable. See UX_DECISIONS UX-17. */
 const ROW_DEF = [
   { col: TI.mediumRed,   pts: 7, name:'red'    },
   { col: TI.mediumRed,   pts: 7, name:'red'    },
-  { col: TI.lightRed,    pts: 5, name:'orange' },
-  { col: TI.lightRed,    pts: 5, name:'orange' },
+  { col: TI.darkYellow,  pts: 5, name:'orange' },
+  { col: TI.darkYellow,  pts: 5, name:'orange' },
   { col: TI.mediumGreen, pts: 3, name:'green'  },
   { col: TI.mediumGreen, pts: 3, name:'green'  },
   { col: TI.lightYellow, pts: 1, name:'yellow' },
@@ -170,8 +176,27 @@ const ROW_DEF = [
 /* ---- Speed table (1976 authored curve) -------------------------------
    Speeds up after 4 hits, after 12 hits, and on first touching the orange
    and red rows. Four discrete steps, deliberately designed — two years
-   BEFORE Space Invaders got its famous curve by accident. ARCHAEOLOGY A-8. */
-const SPEED = [0.115, 0.140, 0.165, 0.195, 0.225];
+   BEFORE Space Invaders got its famous curve by accident. ARCHAEOLOGY A-8.
+
+   Units are px/ms. The px/frame figures below assume 60 Hz.
+
+   [ASSUMED] — there is NO authoritative source for the original's ball speed,
+   and the reason is structural: Breakout has no processor, so there is no ROM,
+   so it is absent from MAME and must be *simulated* rather than emulated. The
+   exact timing lives in discrete circuit behaviour nobody can read out of a
+   binary. Anyone quoting you a pixels-per-frame figure is reconstructing it.
+
+   Revised 2026-07-18 after playtest. The first pass opened at 1.92 px/frame;
+   the discrete-logic era ran roughly 1-2 px/frame, so wall 1 was starting at
+   the TOP of the period range. Lowered the floor and widened the ramp — the
+   escalation is the authored feature, so it should be felt, not just measured.
+     step 0  0.085  ->  1.42 px/frame   (was 1.92)
+     step 1  0.110  ->  1.83
+     step 2  0.140  ->  2.33
+     step 3  0.175  ->  2.92
+     step 4  0.215  ->  3.58            (was 3.75)
+   Top/start ratio 2.53x, up from 1.96x.                                     */
+const SPEED = [0.085, 0.110, 0.140, 0.175, 0.215];
 
 const game = {
   state: 'title',            // title | serve | play | dying | over | cleared

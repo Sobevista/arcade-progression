@@ -115,19 +115,56 @@ round breaks the tension rhythm between waves. Logged against rung 3, not this b
 | UX-15 | Curve made visible | Speed pips, bottom right | The authored curve is this rung's whole lesson; hiding it wastes it | If it reads as clutter |
 | UX-16 | Scope discipline | **No mechanic that wasn't in the 1976 circuit** | Their chip count enforced restraint; our marginal cost is zero, so it must be a written rule (ARCHAEOLOGY A-5) | Never, without an explicit ledger entry |
 
-### OPEN — Daniel's call: orange band legibility
+### UX-17 — orange band legibility — RESOLVED 2026-07-18 [DANIEL]
 
-The TI-99/4A palette has **no true orange**. The orange band currently uses `lightRed`,
-which renders as salmon and sits visually close to the red band above it. The 1/3/5/7
-scoring is meant to be a *visible* risk gradient — if red and orange read as the same
-colour, the player loses that information.
+**Ruling:** *"We have the ability to make them distinguishable here which is a UX issue
+not a strict necessity."* Legibility wins. Orange moved from `lightRed` (salmon) to
+`darkYellow` (gold).
 
-- **Accept it** — series palette fidelity holds; the constraint is real and documented.
-- **Move orange to `darkYellow`** — olive-gold, clearly distinct from both red above and
-  the yellow band below. Costs a little colour accuracy, buys back the gradient.
+**Measured, not eyeballed** — RGB distance between the red and orange bands:
 
-Recorded rather than silently changed, because it is a genuine tradeoff between two
-things we said we cared about.
+| | red ↔ orange | verdict |
+|---|---|---|
+| Before (`lightRed`) | **51** | too close; the bands blurred into one |
+| After (`darkYellow`) | **115** | clearly separable |
+
+Adjacent-band distances after the change: red↔orange **115**, orange↔green **180**,
+green↔yellow **207**. No two *adjacent* bands are confusable. Gold and the pale yellow
+band are the closest pair overall but green sits between them, so it never matters.
+
+**The principle worth keeping:** a constraint adopted for authenticity stops being worth
+holding the moment it destroys information the design depends on. The 1/3/5/7 scoring is
+a *risk gradient* — the player is supposed to see that the valuable bricks are the hard
+ones. A palette that hides the gradient isn't fidelity, it's a bug wearing a costume.
+
+### UX-18 — ball speed curve — REVISED 2026-07-18 after playtest
+
+Daniel: *"seems a bit fast for wall 1... I would like the reference."*
+
+**There is no reference, and the reason is structural.** Breakout has no processor, so
+there is no ROM, so it is **absent from MAME** and must be *simulated* rather than
+emulated. Nobody can read the original's ball speed out of a binary — anyone quoting a
+pixels-per-frame figure is reconstructing it. Tagged **[ASSUMED]** in the source.
+
+What we could do is measure ours against the era norm of roughly 1–2 px/frame for
+discrete-logic games. Wall 1 was opening at **1.92 px/frame** — the very top of that
+range. Wall 1 was starting where the era's ceiling was.
+
+| Step | Before | After | Trigger |
+|---|---|---|---|
+| 0 | 1.92 px/f | **1.42** | serve |
+| 1 | 2.33 | 1.83 | 4 hits |
+| 2 | 2.75 | 2.33 | 12 hits |
+| 3 | 3.25 | 2.92 | orange row |
+| 4 | 3.75 | 3.58 | red row |
+
+Top/start ratio widened from **1.96× to 2.53×**. Lower floor, similar ceiling — the
+escalation is the authored feature of this rung, so it should be *felt*, not merely
+measured. Re-verified after the change: all four triggers fire, no tunnelling at the new
+top speed, 61 fps.
+
+**Re-pick trigger:** if a credible circuit-level reconstruction of the original timing
+ever surfaces, this table gets replaced by it and the [ASSUMED] tag comes off.
 
 ---
 

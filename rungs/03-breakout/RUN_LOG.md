@@ -66,12 +66,38 @@ plainly: **my tests are less reliable than my code.** INV-3 is not a one-off obs
 it is the dominant failure mode of this whole approach — and the only reason it hasn't
 cost anything yet is that the rule to suspect the test first was written down after rung 2.
 
+### 2026-07-18 — playtest 1 (Daniel), both calls made
+
+- **Orange band → `darkYellow`.** Daniel: *"We have the ability to make them
+  distinguishable here which is a UX issue not a strict necessity."* Measured rather than
+  eyeballed: red↔orange RGB distance went **51 → 115**. Adjacent-band distances now
+  115 / 180 / 207 — no two neighbouring bands confusable. Recorded as **A-10**: a
+  constraint adopted for authenticity stops being worth holding the moment it destroys
+  information the design depends on. [VERIFIED]
+- **Ball speed queried — and the answer is that no reference exists.** Chased it properly
+  and hit something worth keeping: **Breakout is absent from MAME because it has no
+  processor.** No CPU → no ROM → nothing to emulate; it can only be *simulated*. So the
+  original's ball speed is not obscure, it is genuinely unreadable. Anyone quoting a
+  px/frame figure is reconstructing. Now **Finding 4 / A-9** in the archaeology, and our
+  table is tagged [ASSUMED] in the source rather than dressed up as fidelity.
+- **Daniel's instinct was right, quantified:** wall 1 opened at **1.92 px/frame** against
+  a discrete-logic era norm of roughly 1–2 px/frame — starting at the ceiling of the
+  period range. Lowered to **1.42** and widened the ramp; top/start ratio **1.96× → 2.53×**.
+  Lower floor, similar ceiling, so the escalation is felt rather than merely measured —
+  which matters because the authored curve *is* this rung's lesson. [VERIFIED]
+- Re-verified after both changes: row values still 1/3/5/7 one brick each · **all four
+  curve triggers fire in a single run** (4 HITS / 12 HITS / ORANGE ROW / RED ROW) · zero
+  tunnelling swept across the full stride at the new top speed · 61 fps. [VERIFIED]
+- Cleaned up after myself again: autoplay had written a high score into localStorage.
+  Removed. Second time this session — tests that touch persistent user state must clean
+  up, and I keep needing to be reminded by my own log.
+
 ### Open for Daniel
 
-- **Palette legibility.** The TI-99/4A has no true orange, so the orange band is rendered
-  with `lightRed` and reads as salmon — visually close to the red band above it. The
-  1/3/5/7 score gradient is meant to be *visible*, so this may be costing the player
-  information. Options: accept it (series palette fidelity), or move orange to
-  `darkYellow` (olive-gold, clearly distinct from both red and the yellow band). Daniel's
-  call — recorded in `UX_DECISIONS.md`, not silently changed.
-- **Playtest pending.** Per INV-9 this rung is not verified until a human plays it.
+- ~~**Palette legibility.**~~ **CLOSED** — orange → `darkYellow`, separation more than
+  doubled. See UX-17.
+- ~~**Ball speed reference.**~~ **CLOSED as far as it can be** — no authoritative source
+  exists (A-9). Retuned against the era norm and Daniel's playtest; tagged ASSUMED.
+- **Playtest 2 pending.** The speed and colour changes have been machine-verified but not
+  yet *played*. Per INV-9 that is a different oracle, and on this project it has caught
+  things the suite structurally could not, every single time.

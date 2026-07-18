@@ -116,8 +116,23 @@ roadblocks already earned and solved.
   Stated plainly in the run log: my tests are less reliable than my code, and INV-3
   (suspect the test first) is the dominant failure mode of this whole approach.
 
-  **NEXT ACTION: Daniel playtests rung 3** — per INV-9 it is not verified until a human
-  plays it. One open call waiting for him in `UX_DECISIONS.md`: the TI palette has no
-  true orange, so the orange band reads as salmon next to red and may be costing the
-  player the 1/3/5/7 risk gradient. Accept, or move orange to `darkYellow`.
-  Rung 4 = Galaga (1981), archaeology first.
+- **2026-07-18 — Rung 3 playtested; both calls made and applied.** Orange band moved to
+  `darkYellow` (red↔orange RGB separation **51 → 115**; Daniel's ruling: legibility beats
+  palette fidelity when the constraint hides information the design depends on — **A-10**).
+  Ball speed retuned: wall 1 was opening at **1.92 px/frame** against a discrete-logic era
+  norm of ~1–2, so the floor dropped to **1.42** and the ramp widened from **1.96× to
+  2.53×**.
+
+  Chasing the speed question produced **A-9**, the best archaeology finding of the rung:
+  **Breakout is absent from MAME because it has no processor.** No CPU → no ROM → nothing
+  to emulate, only simulate. The original's ball speed is not obscure, it is genuinely
+  unreadable — software leaves a readable artifact, hardware leaves only behaviour. Our
+  table is tagged [ASSUMED] in the source accordingly.
+
+  All regressions re-verified after both changes: row values 1/3/5/7 one brick each, all
+  four curve triggers firing in a single run, zero tunnelling at the new top speed, 61 fps.
+
+  **NEXT ACTION: Daniel plays the retuned build** — the changes are machine-verified but
+  not yet felt, and per INV-9 that is a different oracle. Then **rung 4 = Galaga (1981)**,
+  archaeology first: entry-flight paths, dive AI, the capture/rescue beam, and the bonus
+  stages Daniel flagged on rung 2.

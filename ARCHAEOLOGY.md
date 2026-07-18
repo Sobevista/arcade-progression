@@ -192,8 +192,29 @@ over a monochrome CRT. Two different companies, two countries, two years apart, 
 hack. A-3 is upgraded from an anecdote to an **era-defining constraint**: for most of the
 1970s, colour was a physical layer, not a software property.
 
+### Finding 4 — a game with no processor cannot be emulated, only reconstructed
+
+**Breakout is absent from MAME.** Not by oversight — there is nothing to emulate. No CPU
+means no ROM, no instruction stream, no binary anyone can read the behaviour out of. The
+game exists as timing in discrete circuits, so it must be *simulated* by reproducing what
+the hardware did, judged by feel.
+
+The consequence lands directly on us: **there is no authoritative figure for the original
+ball speed.** Not obscure, not hard to find — it does not exist in a readable form.
+Anyone who quotes you a pixels-per-frame number for 1976 Breakout is reconstructing, and
+should say so.
+
+**The transferable lesson:** software leaves a readable artifact; hardware leaves
+behaviour. Once the last working cabinet dies, a discrete-logic game survives only as
+other people's reconstructions of how it *felt* — which is a far weaker form of
+preservation than a ROM dump. This is why our own speed table is tagged ASSUMED in the
+source rather than presented as fidelity.
+
 ### Open / unverified
 
+- **Ball speed.** No authoritative source exists (see Finding 4). Ours is tuned against
+  the discrete-logic era norm of roughly 1–2 px/frame and Daniel's playtest, opening at
+  **1.42 px/frame** and escalating to 3.58 across the four authored triggers. **[ASSUMED]**
 - **Paddle segmentation.** Sources confirm the mechanic — the ball rebounds at different
   angles depending where it strikes the paddle — but **not** how many discrete zones the
   original used, or whether deflection was stepped or continuous. **[ASSUMED]** We will
@@ -230,3 +251,5 @@ hack. A-3 is upgraded from an anecdote to an **era-defining constraint**: for mo
 | A-6 | Elegance the factory can't build is worth less than a clumsy version that ships; the player experiences behaviour, not implementation | 3 | Woz's ~42 chips → Atari's ~100, gameplay indistinguishable |
 | A-7 | Colour was a *physical layer* for most of the 1970s, not a software property — confirmed across two companies, two countries, two years | 2, 3 | cellophane on both |
 | A-8 | The deliberate solution can predate the famous accidental one — later ≠ more evolved | 3 | Breakout authored its difficulty curve in 1976; Invaders got one by accident in 1978 |
+| A-9 | Software leaves a readable artifact; hardware leaves only behaviour. A game with no processor can't be emulated, only reconstructed — so some "facts" about it genuinely do not exist | 3 | Breakout is absent from MAME; no ROM to read a ball speed out of |
+| A-10 | A constraint adopted for authenticity stops being worth holding the moment it destroys information the design depends on | 3 | TI palette hid the 1/3/5/7 risk gradient; legibility won |
