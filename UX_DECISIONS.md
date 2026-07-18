@@ -14,6 +14,9 @@ Every lesson goes to exactly one file. The test is one question:
 - **Yes → `INVARIANTS.md`.** It's a law. Binary. Breaking it is a bug.
 - **No → here.** It's a choice with tradeoffs. There is no correct answer, only a
   chosen one, its cost, and the condition that would make us choose differently.
+- **It's a fact about the original machine, its economics, or its era → `ARCHAEOLOGY.md`.**
+  That file holds *why the choice existed at all*, and the Suffering Ledger deciding
+  which historical constraints we keep on purpose.
 
 Why the split is load-bearing: a taste call filed as law gets obeyed by future-you
 without the reasoning, forever. A law filed as taste gets *negotiated with* at 2am

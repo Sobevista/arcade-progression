@@ -7,10 +7,17 @@ because it sounded true — it goes in because it cost something.*
 *Flows UP to the harness `Knowledge_Base/` when this build exits (Layer 4 law:
 lessons flow up, artifacts don't). The game folder is disposable. This isn't.*
 
-**Sibling file: `UX_DECISIONS.md`.** Routing rule — *would violating this be wrong in
-every game, on every platform, for every audience, regardless of taste?* **Yes → here**
-(a law; breaking it is a bug). **No → `UX_DECISIONS.md`** (a choice; it carries its
-tradeoff and a re-pick trigger). Nothing belongs in both.
+**Three files, three kinds of knowledge. Routing rule:**
+
+- *Would violating this be wrong in every game, on every platform, regardless of taste?*
+  **Yes → here.** A law. Breaking it is a bug.
+- *Does the right answer depend on the game, platform, or audience?*
+  **→ `UX_DECISIONS.md`.** A choice, carrying its tradeoff and a re-pick trigger.
+- *Is it a fact about the original hardware, economics, or era — why the choice existed
+  at all?* **→ `ARCHAEOLOGY.md`.**
+
+A law is timeless. A choice is contextual. Archaeology is the reason the choice existed.
+Nothing belongs in two of them.
 
 ---
 

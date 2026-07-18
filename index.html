@@ -40,12 +40,24 @@
 
 <div class="wrap">
   <h1>ARCADE PROGRESSION</h1>
-  <p class="sub">A walk through arcade history, one game at a time, built from scratch.</p>
+  <p class="sub">Re-deriving the evolution of video games, in order, from the constraints up.</p>
 
-  <p>Every rung is playable in a browser and teaches a primitive the last one didn't
-  have. The real product isn't the games — it's the
-  <a href="INVARIANTS.md">invariant list</a>: laws earned by things going wrong, so the
-  next build starts with its roadblocks already solved.</p>
+  <p>Not tribute builds. We work out what the original designers must have spent a long
+  time figuring out &mdash; what machine they had, what it physically couldn't do, and
+  what that forced them to invent &mdash; then build it ourselves and keep the lessons.
+  The games are the vehicle. <strong>The deliverable is the trove:</strong></p>
+
+  <ul>
+    <li><a href="INVARIANTS.md">INVARIANTS.md</a> &mdash; <strong>laws</strong>, each carrying the failure that bought it</li>
+    <li><a href="UX_DECISIONS.md">UX_DECISIONS.md</a> &mdash; <strong>choices</strong>, tradeoffs priced, each with a re-pick trigger</li>
+    <li><a href="ARCHAEOLOGY.md">ARCHAEOLOGY.md</a> &mdash; <strong>history</strong>: what they were up against, and which constraints we keep on purpose</li>
+  </ul>
+
+  <p class="note">Example of what falls out: the invaders speeding up as you kill them is
+  the most famous thing about Space Invaders &mdash; and it isn't in the source code. It
+  was an Intel 8080 bottleneck. The genre's defining feature was never designed, which
+  means on modern hardware the game has no difficulty curve at all unless you put one
+  there deliberately.</p>
 
   <h2>The rungs</h2>
   <ul class="rungs">

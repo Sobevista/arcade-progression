@@ -1,12 +1,19 @@
 # Arcade Progression
 
-A chronological walk through arcade history, one game at a time, built from scratch.
+**Re-deriving the evolution of video games, in order, from the constraints up.**
 Pong → Breakout → Space Invaders → Galaga → TI-99/4A → NES.
 
-Every rung is playable in a browser. Every rung teaches a primitive the previous one
-didn't have. **And the real deliverable isn't the games — it's `INVARIANTS.md`**, the
-accumulating list of laws earned by things going wrong, so that when the big build
-comes, its roadblocks are already solved and paid for.
+Not tribute builds. We work out what the original designers must have spent a long time
+figuring out — what machine they had, what it physically couldn't do, and what that
+forced them to invent — then build it ourselves and keep the lessons. The games are the
+vehicle. **The deliverable is the trove**: three accumulating documents that mean the
+next build starts with its roadblocks already solved.
+
+| File | What it holds |
+|---|---|
+| [`INVARIANTS.md`](INVARIANTS.md) | **Laws** — earned by things going wrong, each carrying the failure that bought it |
+| [`UX_DECISIONS.md`](UX_DECISIONS.md) | **Choices** — the design map, tradeoffs priced, each with a re-pick trigger |
+| [`ARCHAEOLOGY.md`](ARCHAEOLOGY.md) | **History** — what they were up against, what it forced, and the *Suffering Ledger*: which constraints we keep on purpose |
 
 ## Entry ritual
 Follow `RESUME.md`.
@@ -26,6 +33,14 @@ Rungs are numbered by build order, not strictly by year — Breakout is a backfi
 
 ## The rules of this repo
 
+- **Archaeology before code.** Every rung starts by researching the original machine and
+  its constraints — sourced, not recalled — then deciding which of those constraints to
+  keep. No code until that's written down. (Rung 2 was built the other way round and
+  shipped two mechanics wrong from confident memory.)
+- **Be intentional with your suffering.** Every historical constraint is optional for us,
+  so each one is a live choice: KEEP (the constraint teaches something you can't get from
+  reading) or SKIP (tedium, not insight). Keeping all of them is cosplay; skipping all of
+  them means learning nothing about why any of it is shaped the way it is.
 - **One HTML file per game.** Vanilla JS, Canvas 2D, zero dependencies, no build step.
   A game you can't open by double-clicking is a game nobody will ever repair.
 - **Build for repair, not forever.** If a near-beginner can't open it and change
@@ -40,8 +55,9 @@ Rungs are numbered by build order, not strictly by year — Breakout is a backfi
 ## Layout
 
 ```
-INVARIANTS.md          the deliverable — laws earned across every rung
+INVARIANTS.md          laws earned across every rung
 UX_DECISIONS.md        design choices, tradeoffs, re-pick triggers
+ARCHAEOLOGY.md         the original machines, what they forced, the Suffering Ledger
 index.html             landing page (GitHub Pages) linking every playable rung
 rungs/
   02-invaders/

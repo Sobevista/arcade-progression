@@ -19,13 +19,20 @@ text on a screen.
 
 1. **`BUILD_OUTLINE.md`** — LOCKED decisions, OPEN questions, and the STATE OF BUILD log
    whose last entry names the single next action. **This is the current state.**
-2. **`INVARIANTS.md`** — the laws earned so far. Read before writing any game code;
+2. **`ARCHAEOLOGY.md`** — what the original builders faced and the Suffering Ledger.
+   Read this *before* the invariants; it explains why the rest exists.
+3. **`INVARIANTS.md`** — the laws earned so far. Read before writing any game code;
    several were bought expensively and will not be obvious.
-3. **`UX_DECISIONS.md`** — the design map, what was chosen, and what would change it.
-4. The rung you're working on: `rungs/NN-name/SCOPE.md` then its `RUN_LOG.md`.
+4. **`UX_DECISIONS.md`** — the design map, what was chosen, and what would change it.
+5. The rung you're working on: `rungs/NN-name/SCOPE.md` then its `RUN_LOG.md`.
 
 ## How to work here
 
+- **Archaeology first, always.** Before any code on a new rung: research the original
+  machine, its constraints, and what those forced the designers to invent — **sourced,
+  not recalled** — and write it into `ARCHAEOLOGY.md` along with a Suffering Ledger
+  saying which constraints we keep and why. Rung 2 was built the other way round and
+  shipped two mechanics wrong from confident memory. Research is cheap.
 - **Build:** one HTML file per game, vanilla JS + Canvas, zero dependencies, no build
   step. Open by double-clicking. If that stops being true, something has gone wrong.
 - **Before building a rung:** write `SCOPE.md` first — what's under test, binary pass

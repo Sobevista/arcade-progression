@@ -1,10 +1,23 @@
 # Arcade Progression — Build Outline
 
-Owner: Daniel + Claude. Purpose: walk arcade history one rung at a time, extracting a
-game-dev invariant list along the way, so the eventual big build starts with its
+Owner: Daniel + Claude. Purpose: **re-derive the evolution of video games from the
+constraints up** — work out what the original designers must have spent a long time
+figuring out, build it, and keep the lessons — so the eventual big build starts with its
 roadblocks already earned and solved.
 
 ## LOCKED
+
+- **Archaeology before code (added 2026-07-18).** Every rung starts with sourced research
+  into the original machine and its constraints, written into `ARCHAEOLOGY.md` with a
+  **Suffering Ledger** naming which constraints we KEEP (the constraint teaches something
+  unreadable) and which we SKIP (tedium, not insight). No code until that exists. Rung 2
+  was built in the opposite order and shipped two mechanics wrong from confident memory.
+- **Three artifacts, three kinds of knowledge, no overlap.** `INVARIANTS.md` = laws.
+  `UX_DECISIONS.md` = choices with re-pick triggers. `ARCHAEOLOGY.md` = the history that
+  explains why the choice existed. A law filed as taste gets negotiated with; a taste
+  call filed as law gets obeyed forever without its reasoning.
+- **No rush.** The trove is the point. A rung is done when its lessons are extracted and
+  sourced, not when the game is playable.
 
 - **One HTML file per game.** Vanilla JS + Canvas 2D, zero dependencies, no build step.
   Reassessed only if a rung provably cannot be built this way — and that reassessment
@@ -60,5 +73,25 @@ roadblocks already earned and solved.
   **Honest scoreboard for the rung:** automated suite found 1 real bug and raised 5
   false alarms; Daniel playing found 6. Every behavioural defect was found by a human.
 
-  **NEXT ACTION: Daniel picks rung 3 — Breakout (1976) backfill, or forward to Galaga
-  (1981).** Recommendation is Breakout; Galaga then becomes rung 4.
+- **2026-07-18 — Project reframed and `ARCHAEOLOGY.md` opened.** Daniel's framing: we are
+  "Dr. Stone-ing" the evolution of video games — deriving what must have taken the
+  originals a long time to work out, so we learn their lessons rather than just copying
+  their results. Method inverted accordingly: **archaeology before code**, and a
+  **Suffering Ledger** per rung (his own mantra — *be intentional with your suffering*)
+  deciding which historical constraints we keep on purpose.
+
+  First archaeology entry written for rung 2, sourced: Intel 8080 @ 2 MHz, 1-bit 7 KB
+  framebuffer, **no sprite hardware**, colour faked with physical cellophane over the
+  CRT, monitor rotated 90° to turn a 256×224 raster into the portrait play area the whole
+  genre inherited. **The canonical finding: the tempo ramp is not in the source code** —
+  it was an 8080 bottleneck, so the genre's defining feature was never designed. Which
+  means on modern hardware the game has *no difficulty curve at all* unless you author
+  one, and we had to hand-build a 560 ms → 40 ms curve to buy back what they got free.
+  Generalised as A-1/A-2: constraints generate identity, and removing a constraint
+  silently removes whatever it was accidentally providing.
+
+  **NEXT ACTION: rung 3 = Breakout (1976).** Step 1 is archaeology, not code — the open
+  questions are already listed in `ARCHAEOLOGY.md` (was it discrete TTL with no CPU at
+  all? what did Wozniak's chip-count constraint remove? was paddle-angle control designed
+  or emergent? were the speed-up and paddle-shrink authored or another side effect?).
+  Galaga becomes rung 4.
