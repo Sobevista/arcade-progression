@@ -298,6 +298,34 @@ enforcement worth trusting.
 
 ---
 
+## From rung 4 — GALAGA (2026-07-19)
+
+### INV-19 — A check that cannot observe its subject must abstain loudly, never pass
+The `standalone` conformance check — the one that exists because of INV-18, inside the
+tool built to stop contracts drifting — had been **passing vacuously on every rung since
+the day it was written.** It built its own URL wrong (`.../index.html/index.html`),
+fetched a 404, and ran its regexes over the ~0-byte error page. Zero external references
+found — in a file that wasn't there. Verdict: OK.
+
+The tell was sitting in its own output the whole time: `(0KB)`. It printed the size of
+what it read and nobody — including the author, including the author's checker — noticed
+that the size was zero. It surfaced only because the rung-4 verification pass read the
+detail string instead of just the OK.
+
+**The invariant:** a verifier's first assertion is that it actually observed its subject.
+Empty input, missing file, error page, wrong URL — all of these must produce a loud
+abstention (or a failure), never a pass, because every downstream conclusion inherits the
+silent hole. This is INV-14's sibling: INV-14 is a benchmark returning its own
+configuration; INV-19 is a checker passing on the absence of its input. Both look exactly
+like data.
+
+And the uncomfortable corollary, one level up: **the enforcement layer is itself a
+convention unless something enforces it.** INV-18 said "add a check that fails." The
+check was added, and drifted. The only reason it was caught is that a verification pass
+treated the checker as a subject too. Check the checker's evidence, not just its verdict.
+
+---
+
 ## Ledger
 
 | # | Invariant | Rung | Cost to find |
@@ -320,6 +348,7 @@ enforcement worth trusting.
 | 16 | Never text-process source files with the shell when an edit tool exists | Breakout | PowerShell re-encode corrupted 29 em dashes, silently |
 | 17 | Layout intent is not layout fact — measure the rendered box | Breakout + Invaders | "width:100%" was shipping at 448px of 921px |
 | 18 | A convention with no enforcement is a preference, and preferences drift | Invaders | leaderboard missed for a day; the TODO was written and ignored |
+| 19 | A check that cannot observe its subject must abstain loudly, never pass | Galaga | the `standalone` check passed a 404 page on every rung since birth; the "(0KB)" tell was in its own output |
 
 ---
 

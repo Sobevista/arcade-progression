@@ -27,15 +27,15 @@ Follow `RESUME.md`.
 | 1 | Pong | 1972 | paddle/ball physics, scoring | separate repo — [Pong_Tower-Repo](https://github.com/Sobevista/Pong_Tower-Repo) (Python/pygame) |
 | 2 | **Invaders** | 1978 | formation, tempo ramp, destructible terrain | ✅ **PLAY** — [`rungs/02-invaders/`](rungs/02-invaders/) · [live](https://sobevista.github.io/arcade-progression/rungs/02-invaders/) |
 | 3 | **Breakout** | 1976 | reflection angles, tile grid, an *authored* difficulty curve — and no CPU at all | ✅ **PLAY** — [`rungs/03-breakout/`](rungs/03-breakout/) · [live](https://sobevista.github.io/arcade-progression/rungs/03-breakout/) |
-| 4 | Galaga | 1981 | entry-flight paths, dive AI, capture/rescue, bonus stages | queued — next |
+| 4 | **Galaga** | 1981 | entry-flight choreography, dive AI, capture/rescue, challenging stages | ✅ **PLAY** — [`rungs/04-galaga/`](rungs/04-galaga/) · [live](https://sobevista.github.io/arcade-progression/rungs/04-galaga/) |
 | 5 | TI-99/4A titles | 1979–84 | the machine this whole thing is an homage to | queued |
 | 6 | NES | 1985+ | tile maps, scrolling, item state | queued |
 
 Rungs are numbered by build order, not strictly by year — Breakout is a backfill, built
 third because it is the causal link between Pong and Space Invaders.
 
-Both playable rungs carry: a high score table with initials, a swivel stick for touch,
-synthesised audio, and the TI-99/4A palette.
+All three playable rungs carry: a high score table with initials, a swivel stick for
+touch, synthesised audio, and the TI-99/4A palette.
 
 ## Releasing a rung (pacing the learning)
 
@@ -108,7 +108,7 @@ UX_DECISIONS.md        design choices, tradeoffs, re-pick triggers
 ARCHAEOLOGY.md         the original machines, what they forced, the Suffering Ledger
 index.html             landing page (GitHub Pages) linking every playable rung
 tools/
-  playtest-sim.js      tiered simulated players (beginner/intermediate/adept)
+  playtest-sim.js      tiered simulated players (firstTimer/novice/competent/expert/ceiling)
   SIM_RESULTS.md       their measured results vs the researched criteria
   hiscore.js           shared high-score protocol (inlined per rung)
   conformance.js       fails any rung missing a shared contract

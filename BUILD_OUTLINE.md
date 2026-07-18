@@ -319,5 +319,75 @@ not an oversight. It should be revisited the moment either becomes true:
   `sim.step()` — the sim contract makes tests immune to throttling, and I had built it and
   then not used it for my own verification.
 
-  **NEXT ACTION: build the two missing sim tiers** (`novice` ~20–40, `competent` ~300) so
-  the ladder brackets real humans, then **rung 4 = Galaga (1981)**, archaeology first.
+  ~~NEXT ACTION: build the two missing sim tiers~~ *(done same day — see next entry; this
+  line went stale because the work landed without a STATE entry, which is exactly the
+  drift the freshness gate exists to catch).*
+
+- **2026-07-18 — Sim tiers calibrated to the family's real scores; release gating added.**
+  (This entry appended 2026-07-19 — commits `6c61bb7` and `3322808` landed without one,
+  leaving the previous entry's next-action line stale. Recorded late, honestly.)
+
+  Five tiers now: `firstTimer / novice / competent / expert / ceiling`, every human anchor
+  within a factor of 2 (6yo→firstTimer 1.11, 9yo→novice 1.00, Mum→novice 0.62,
+  Daniel→competent 0.78), ladder monotonic **5 → 13 → 248 → 882 → 896**. The fix required
+  a new parameter, `predictChance`: with only `predictBounces`, the tiers had a cliff
+  (always-chase ≈ 5, always-predict ≈ 350) and every real novice lives inside that gap.
+  A novice reads the ball *sometimes* — consistency, not accuracy, is what grows. Full
+  record in `tools/SIM_RESULTS.md`.
+
+  Also landed: `releases.json` soft gate + `standalone` conformance check (one HTML file,
+  zero external requests — verified, not assumed) and the GOVERNANCE record above.
+
+  **NEXT ACTION: rung 4 = Galaga (1981), archaeology first** — sourced dig into the Namco
+  board (the first rung with real sprite hardware), Suffering Ledger, then SCOPE, then code.
+
+- **2026-07-19 — Rung 4 (Galaga) built the doctrine's way end-to-end: dig → ledger →
+  SCOPE → code → machine verification. Human playtest still ahead — not yet done by the
+  repo's own standard.**
+
+  Archaeology first, four lessons into the trove before any code: **A-13** (the famous
+  no-fire cheat is a resource leak — 8 shot slots, X=0 spawns invisible-but-live, release
+  checked only Y), **A-14** (sprite hardware made motion free, so choreography became the
+  content — the game is authored path data), **A-15** (danger is priced, not forced —
+  diving pays 2×, a boss with escorts 10×, and capture converts a lost life into an
+  investment), **A-16** (the challenging stage invented pacing rhythm — difficulty needs
+  a beat, not just a slope).
+
+  Build: one 54 KB file, paths as data (normalised control points → Catmull-Rom →
+  constant-speed polyline; entrance scripts and dives are arrays). Full formation
+  (20/16/4), three cycling entrance patterns, breathing, dives with escorts, the
+  **capture / rescue / dual-fighter loop**, challenging stage with 10,000 perfect bonus,
+  the sourced score table exactly, extra fighters at 20,000 then every 70,000, hit/miss
+  ratio at game over, two-layer blinking starfield, all shared contracts (leaderboard,
+  swivel stick, touch layout, sim contract). The 8-slot enemy-shot pool is kept
+  period-correct **with the leak fixed** — spawn validates, release covers every exit
+  axis, and the A-13 regression (hostile spawns refused, pool returns to 0) is machine-
+  checked.
+
+  **Verification: every SCOPE criterion [VERIFIED] in-browser through `sim.step()`** —
+  scoring table exact including 1600 for boss+2-escorts, capture→rescue→dual proven
+  end-to-end by steering into the beam, challenge stage fires zero shots, tunneling
+  sweep 16/16 at forced 50 ms, INV-15 held-button regression clean, entity/pool zero
+  across 5 restarts, frame cost 0.93 ms (~18× headroom; live-fps read rides the family
+  playtest). **Conformance: 11/11.**
+
+  **INV-19 earned — the conformance checker itself was lying.** The `standalone` check
+  had passed a 404 page on every rung since birth (`(0KB)` printed in its own detail
+  string the whole time). Fixed; all three rungs now measured genuinely standalone for
+  the first time (37/38/54 KB, zero external references). Law: a check that cannot
+  observe its subject must abstain loudly, never pass — and the enforcement layer is
+  itself a convention unless something checks the checker's evidence.
+
+  **First-pass sim (scripted mid-skill player, 5 games):** losable, difficulty scales
+  (dead by stage 7-15), sessions 3-6 min. **Flag for playtest: a frame-perfect-aim
+  player clears stage 1 at ~25 s — killing nearly everything in transit, so the battle
+  phase barely happens.** Deliberately not pre-tuned (INV-13); humans first. Tier-ladder
+  port to Galaga is named future work.
+
+  Docs flipped together (README + landing, per the docs conformance rule); README's
+  stale tier names fixed in passing. `releases.json` untouched — **what is advertised
+  stays Daniel's pacing call** (currently Invaders only).
+
+  **NEXT ACTION: family playtest of rung 4** — the transit-kill question, dive feel,
+  capture fairness, tablet touch, audio; then Daniel's release-gating call for rungs
+  3 and 4. After that: rung 5 = TI-99/4A titles, archaeology first.

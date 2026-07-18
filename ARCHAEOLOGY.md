@@ -276,6 +276,137 @@ source rather than presented as fidelity.
 
 ---
 
+## Rung 4 — Galaga (Namco, 1981)
+
+Dug 2026-07-19, before any code — the method holding for its second rung.
+
+### The machine
+
+| | |
+|---|---|
+| CPU | **Three Z80s** (~3 MHz), shared address space. CPU1 "the game boss" holds 16 KB of code; the two slaves hold 4 KB each. All three share one 8 KB RAM that is both video memory and general storage ([Computer Archeology](https://www.computerarcheology.com/Arcade/Galaga/), [System 16](https://www.system16.com/hardware.php?id=516)) |
+| Sprites | **Hardware sprites at last** — up to 64, with dedicated sprite ROM. The first rung in our ladder where the machine draws moving objects *for* the programmer |
+| Display | 224×288 portrait, tilemap background |
+| Starfield | A dedicated custom chip — the **Namco 05XX** — generates the scrolling starfield: 4 sets of 63 stars, 2 sets shown at a time for the blink ([Arcade Shop](https://www.arcadeshop.com/i/2/05xx-galaga-starfield-generator.htm)). The *background ambience* had its own silicon |
+| Sound | The same custom 3-voice waveform generator (WSG) as Pac-Man ([System 16](https://www.system16.com/hardware.php?id=516)) |
+| Lineage | Sequel to Galaxian (1979). Planning took two months; it was intended for the Galaxian board, and moved to the new board at Namco R&D's suggestion. Director Shigeru Yokoyama ([Wikipedia](https://en.wikipedia.org/wiki/Galaga)) |
+
+### Constraint → what it forced (and what *removing* one enabled)
+
+| Constraint / change | What it did | What that became |
+|---|---|---|
+| Sprite hardware (was: none in 1978) | Smooth curved motion became *free* | **Choreography became the content** — entrance trains, looping dives, the tractor beam. See Finding 1 |
+| Three CPUs, 8 KB shared RAM | Enemy logic, shots, and sound split across processors | The seam between CPU1 and CPU2 is where the no-fire bug lives — see Finding 2 |
+| Fixed pools: 64 sprite slots, **8 enemy-shot slots** | Every moving thing is a slot in a finite table | The most famous cheat in arcade history is a **resource leak** — Finding 2 |
+| Two player shots on screen (Galaxian allowed one) | "Hardware improvements" doubled fire rate | Pacing roughly doubled — a sequel buying *pace* with silicon ([Retro Game Deconstruction Zone](https://www.retrogamedeconstructionzone.com/2020/05/metamorphosis-from-galaxian-to-galaga.html)) |
+
+### Finding 1 — when sprites become free, choreography becomes the medium
+
+Rung 2's formation moved in steps because the CPU drew every pixel; stepped motion was
+the *only* motion. Three years later the sprite hardware moves objects for free — and
+Galaga's entire identity is what the designers did with that freedom: enemies **enter the
+stage in choreographed trains** before settling into formation (the stage starts before
+the formation exists — you can shoot them en route), dives are **authored curved paths**
+that loop and return, butterflies adjust their path depending on which side you're on
+([RGDZ](https://www.retrogamedeconstructionzone.com/2020/05/metamorphosis-from-galaxian-to-galaga.html)).
+
+**The transferable lesson (A-14):** Galaga has barely more *mechanics* than Galaxian —
+its content is **motion data**. When a constraint recedes, the next competitive axis is
+whatever the constraint was suppressing; the studios that noticed first (Namco, 1981)
+defined the era. For us: the flight paths are the build. Get the choreography data model
+right and the game exists; get it wrong and no amount of mechanics saves it.
+
+### Finding 2 — the no-fire bug: a resource leak with a coin slot
+
+The famous trick — kill everything except two left-side bees, dodge them for ~15
+minutes, and no enemy fires for the rest of the game — has a fully understood cause,
+read out of the disassembly ([Computer Archeology](https://www.computerarcheology.com/Arcade/Galaga/),
+[Jason Eckert's summary](https://jasoneckert.github.io/myblog/the-galaga-no-fire-cheat-mystery/)):
+
+- Enemy shots live in a **fixed pool of 8 sprite slots**.
+- In late-stage attack patterns, bees diving at the screen edge occasionally fire a shot
+  at **X = 0**. The hardware draws X=0 off-screen: the shot is invisible but *live*.
+- CPU2's `InitiateBeeShot` never validates coordinates; CPU1's `MoveBeeFire` **ignores**
+  sprites at X=0; and `RemoveBeeShot` frees a slot **only on Y-coordinate bounds** — which
+  an X=0 shot never crosses. So each such shot leaks its slot **permanently**.
+- After ~15 minutes all 8 slots are clogged and the game can never fire again.
+
+Three routines, split across **two different CPUs**, each assuming another had validated.
+Off-screen was treated as equivalent to dead. The release check was on a different axis
+(Y) than the corruption (X).
+
+**The transferable lesson (A-13):** a fixed resource pool needs exactly one owner whose
+release condition covers *every* way an entry can become useless — "not visible" and
+"not alive" are different predicates, and the gap between them is where slots leak.
+Modern costume: connection pools, entity freelists, event listeners. The 1981 version
+just happened to be exploitable by children, which is why it's the best-documented
+resource leak in history.
+
+### Finding 3 — the capture mechanic prices a loss as an investment
+
+The Boss Galaga's tractor beam **takes a life and shows it to you** — your fighter, held
+hostage at the top of the screen. Shoot the captor while it dives and the hostage returns
+as a **dual fighter**: double firepower, double hitbox. Yokoyama took the beam from a
+film scene of a ship captured by a circling laser ([Wikipedia](https://en.wikipedia.org/wiki/Galaga)).
+
+The score table carries the same philosophy — **danger is priced**: every enemy is worth
+double while diving (bee 50→100, butterfly 80→160), and a Boss diving with two escorts
+is worth 1,600 against 150 in formation — **more than 10×** for attacking the most
+dangerous thing on screen at its most dangerous moment
+([StrategyWiki](https://strategywiki.org/wiki/Galaga/Gameplay), [PrimeTime](https://primetimeamusements.com/getting-good-galaga/)).
+
+**The transferable lesson (A-15):** 1981's designers had discovered *incentive design*.
+Galaga doesn't force aggressive play; it **prices** it. And the capture mechanic converts
+the worst moment in the game (losing a ship) into the setup for the best one (the
+rescue) — a loss the player can invest instead of merely absorb. Note the balance rider:
+the reward carries its own cost (a dual fighter is twice as easy to hit).
+
+### Finding 4 — the challenging stage: pacing as an invented feature
+
+Stage 3 and every 4th after is a **challenging stage**: 40 enemies fly through in preset
+patterns and never fire. 100 points each; all 40 = a **10,000 perfect bonus**; the game
+reports your hit/miss ratio at game over ([StrategyWiki](https://strategywiki.org/wiki/Galaga/Walkthrough),
+[Wikipedia](https://en.wikipedia.org/wiki/Galaga)).
+
+A stage with **zero threat** was a genuinely new idea: a breather beat that converts the
+skill the normal stages taught (leading moving targets) into a pure test with a coin-op
+scoreboard payoff. The difficulty curve gained a *rhythm* — tension, tension, release —
+rather than a slope. Note it does exactly what A-11 predicts a coin-op wouldn't do
+(gives away free playtime) and pays for itself in engagement anyway: even the accountants
+learned pacing.
+
+### Open / unverified
+
+- **Exact dive-path shapes and speeds.** The disassembly documents the data tables exist,
+  but no readable spline spec. Ours are authored approximations tuned by playtest.
+  **[ASSUMED]**
+- **Entrance-train composition per stage.** Three entrance patterns cycling per stage is
+  sourced ([StrategyWiki](https://strategywiki.org/wiki/Galaga/Walkthrough)); the exact
+  train orders/groupings in our build are approximations. **[ASSUMED]**
+- **Formation "breathing" (the spread-and-contract idle animation).** Widely described,
+  no timing source found. Implemented by feel. **[ASSUMED]**
+- **Refresh rate.** Often quoted as ~60.6 Hz; not verified against a primary source, and
+  we run at the display's 60 anyway. **[ASSUMED, immaterial]**
+
+### Our Suffering Ledger for rung 4
+
+| Constraint | Verdict | Reasoning |
+|---|---|---|
+| 40-enemy formation, exactly 20 bees / 16 butterflies / 4 bosses ([Arcade Quartermaster](https://www.arcadequartermaster.com/galaga_characters.html)) | **KEEP** | The formation is the stage; its composition drives the scoring economy |
+| Entrance choreography — enemies fly in as trains, vulnerable en route, then settle | **KEEP — the rung's central lesson** | This is A-14 made playable. Authoring path data *is* the build |
+| Two player shots on screen, max | **KEEP** | The 1981 fire discipline: double rung 2's budget, still a budget. Every trigger pull still a decision |
+| **Fixed 8-slot enemy-shot pool** | **KEEP the pool, fix the leak** | The pool is period-correct discipline; we validate on spawn and release on every death path (A-13). The bug is recorded, not reproduced |
+| Capture / rescue / dual fighter | **KEEP — the rung's second lesson** | Risk-reward invention at its origin (A-15) |
+| Challenging stage (stage 3 cadence, 10,000 perfect) | **KEEP** | Pacing rhythm (Finding 4), and it's the kids' favourite part of any Galaga |
+| Score table exactly: 50/100, 80/160, 150/400/800/1600, challenge 100 + 10,000 perfect | **KEEP** | The incentive-design lesson is *in the numbers* |
+| Extra fighter at 20,000 then every 70,000 (a standard DIP option) | **KEEP** ([Namco Wiki](https://namco.fandom.com/wiki/Galaga)) | Standard economy; interacts with the capture gamble |
+| Morphing transform enemies (scorpions etc., stage 4+) | **SKIP for now — held, not judged** | Content, not a lesson-bearing mechanic. Add later if the rung wants depth |
+| Three-CPU architecture | **SKIP — but keep its scar** | Teaches 1981 board engineering, not game design. The lesson it left (A-13, the cross-CPU validation gap) is kept |
+| 05XX starfield chip | **SKIP the chip, KEEP the result** | Two-layer blinking scrolling starfield is a dozen lines of JS. The ambience matters; the silicon doesn't |
+| Smooth curved motion | **INVERTED from rung 2** | On rung 2 we kept *stepped* motion because smoothness would betray 1978. Here smoothness IS 1981 — the sprite hardware existed. The palette stays TI-99/4A (series constraint), the motion goes fluid |
+
+---
+
 ## Running list of transferable lessons
 
 *The trove. One line per finding, sourced, added as each rung is dug.*
@@ -294,3 +425,7 @@ source rather than presented as fidelity.
 | A-10 | A constraint adopted for authenticity stops being worth holding the moment it destroys information the design depends on | 3 | TI palette hid the 1/3/5/7 risk gradient; legibility won |
 | A-11 | Find out what a design decision was optimising for before copying it. Arcade difficulty was tuned for revenue per cabinet-hour — remove the coin slot and you should stop paying its costs | 3 | ~180 s per quarter; 896 max was never an expectation |
 | A-12 | The social layer arrived late and was itself an invention. Initials-entry high score tables did not exist until **Star Fire (Exidy, 1979)**; Asteroids copied it the same year. Three letters specifically to limit obscenities in the attract mode | 3 | imported backwards into 1976/78 on purpose — declared, not smuggled |
+| A-13 | A fixed resource pool needs one owner whose release condition covers every way an entry can die — "not visible" and "not alive" are different predicates, and the gap leaks slots. Validation split across components is validation nobody does | 4 | the no-fire cheat: X=0 shots clog all 8 slots forever; release checked only Y |
+| A-14 | When a constraint recedes, the next competitive axis is whatever it was suppressing — sprite hardware made motion free, so choreography became the content. Galaga's identity is authored path data, not mechanics | 4 | 1978 stepped march → 1981 entrance trains and looping dives |
+| A-15 | Don't force the risky play — *price* it. Diving enemies worth 2×, a boss with escorts 10×; and the capture mechanic converts a lost life into a potential upgrade the player can invest in. Reward carries its own cost (dual fighter = double hitbox) | 4 | Galaga's score table + tractor beam / rescue loop |
+| A-16 | A zero-threat stage was an invention: difficulty needs a rhythm, not just a slope. The challenging stage converts taught skill into a pure test and pays the pacing cost back in engagement | 4 | stage 3 + every 4th; 10,000 perfect bonus; hit/miss ratio at game over |

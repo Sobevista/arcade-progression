@@ -1,0 +1,1413 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>GALAGA — rung 4</title>
+
+<style>
+  :root { --ti-black:#000000; --ti-gray:#CCCCCC; }
+  /* html must NOT be a flex container — see the note in rung 3 (INV-17). */
+  html { margin:0; height:100%; }
+  body {
+    margin:0; min-height:100%; width:100%; box-sizing:border-box;
+    background:var(--ti-black); color:var(--ti-gray);
+    font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; overflow:hidden; touch-action:none; user-select:none;
+  }
+  canvas { image-rendering:pixelated; display:block; }
+  #pad, #pad2 { display:none; }
+
+  /* Touch layout per the shared contract (Lucius's ruling, 2026-07-18):
+     movement arrows at the physical screen edges, secondary buttons ABOVE
+     the canvas, big targets. */
+  #pad { width:100%; justify-content:space-between;
+         padding:0 10px; box-sizing:border-box; gap:8px; }
+  #pad button { flex:1 1 0; max-width:190px; height:76px;
+    font:inherit; font-size:24px;
+    background:#111; color:var(--ti-gray); border:2px solid #333; border-radius:12px; }
+
+  #pad2 { gap:8px; margin-bottom:4px; }
+  #pad2 button { width:78px; height:30px; font:inherit; font-size:11px;
+    background:#0a0a0a; color:#777; border:2px solid #242424; border-radius:8px; }
+
+  #pad button:active, #pad2 button:active { background:#222; }
+  body.touch #pad, body.touch #pad2 { display:flex; }
+  #hint { font-size:12px; color:#555; letter-spacing:1px; }
+  body.touch #hint { display:none; }
+</style>
+
+<div id="pad2">
+  <button id="bP" aria-label="pause">PAUSE</button>
+  <button id="bT" aria-label="title">TITLE</button>
+  <button id="bM" aria-label="sound">SOUND</button>
+</div>
+<canvas id="screen"></canvas>
+<div id="pad">
+  <button id="bL" aria-label="left">&#9664;</button>
+  <button id="bF" aria-label="fire">FIRE</button>
+  <button id="bR" aria-label="right">&#9654;</button>
+</div>
+<div id="hint">&larr; &rarr; MOVE &nbsp;&middot;&nbsp; SPACE FIRE &nbsp;&middot;&nbsp; P PAUSE &nbsp;&middot;&nbsp; M SOUND &nbsp;&middot;&nbsp; ESC TITLE</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   GALAGA — rung 4 of the progression (Pong '72 -> Invaders '78 -> Breakout
+   '76 backfill -> Galaga '81). Single file, vanilla JS, Canvas 2D, zero
+   dependencies, no build step. Palette: TMS9918A (TI-99/4A), the homage.
+
+   The rung's thesis (ARCHAEOLOGY A-14): once sprite hardware made motion
+   free, choreography became the content. So the heart of this file is DATA —
+   entrance paths, trains, and dive shapes — not mechanics. Authoring a new
+   dive means editing arrays, not code. If that ever stops being true the
+   build has failed its own scope (SCOPE.md section 8).
+
+   Sourced fidelity targets and the ASSUMED list live in ARCHAEOLOGY.md rung 4.
+   ========================================================================= */
+
+/* ---- TI-99/4A palette (TMS9918A) ------------------------------------- */
+const TI = {
+  black:'#000000', mediumGreen:'#21C842', lightGreen:'#5EDC78',
+  darkBlue:'#5455ED', lightBlue:'#7D76FC', darkRed:'#D4524D',
+  cyan:'#42EBF5',    mediumRed:'#FC5554',  lightRed:'#FF7978',
+  darkYellow:'#D4C154', lightYellow:'#E6CE80', darkGreen:'#21B03B',
+  magenta:'#C95BBA', gray:'#CCCCCC', white:'#FFFFFF'
+};
+
+/* ---- Sound: synthesised, zero assets. Same discipline as rungs 2-3. ---- */
+const Sound = (() => {
+  let ac = null, muted = false;
+  const ctx = () => ac || (ac = new (window.AudioContext || window.webkitAudioContext)());
+
+  function tone({ freq, to = null, dur = 0.1, type = 'square', vol = 0.12, at = 0 }) {
+    if (muted || !ac) return;
+    const c = ac, t0 = c.currentTime + at;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    if (to !== null) o.frequency.linearRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function noise({ dur = 0.2, vol = 0.2, hp = 0 }) {
+    if (muted || !ac) return;
+    const c = ac, n = Math.max(1, Math.floor(c.sampleRate * dur));
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = c.createBufferSource(); s.buffer = buf;
+    const g = c.createGain(); g.gain.value = vol;
+    let node = s;
+    if (hp) { const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+              s.connect(f); node = f; }
+    node.connect(g).connect(c.destination);
+    s.start();
+  }
+
+  return {
+    unlock() { const c = ctx(); if (c.state === 'suspended') c.resume(); },
+    toggle() { muted = !muted; return muted; },
+    get muted() { return muted; },
+    shoot()    { tone({ freq: 1250, to: 320, dur: 0.09, type: 'square', vol: 0.06 }); },
+    hitSmall() { noise({ dur: 0.12, vol: 0.13, hp: 900 }); },
+    bossHit()  { tone({ freq: 220, to: 150, dur: 0.12, type: 'square', vol: 0.10 }); },
+    bossDie()  { noise({ dur: 0.25, vol: 0.18 });
+                 tone({ freq: 520, to: 90, dur: 0.30, type: 'sawtooth', vol: 0.10 }); },
+    death()    { noise({ dur: 0.6, vol: 0.22 });
+                 tone({ freq: 300, to: 36, dur: 0.6, type: 'sawtooth', vol: 0.10 }); },
+    dive()     { tone({ freq: 900, to: 500, dur: 0.22, type: 'sine', vol: 0.04 }); },
+    beam(step) { tone({ freq: step % 2 ? 520 : 300, to: step % 2 ? 300 : 520,
+                        dur: 0.16, type: 'triangle', vol: 0.08 }); },
+    captured() { [700,560,430,300].forEach((f,i) =>
+                   tone({ freq:f, dur:0.14, type:'square', vol:0.08, at:i*0.14 })); },
+    rescue()   { [392,523,659,784,1047].forEach((f,i) =>
+                   tone({ freq:f, dur:0.11, type:'square', vol:0.09, at:i*0.10 })); },
+    stage()    { [659,880].forEach((f,i) =>
+                   tone({ freq:f, dur:0.10, type:'square', vol:0.08, at:i*0.10 })); },
+    perfect()  { [523,659,784,1047,784,1047,1319].forEach((f,i) =>
+                   tone({ freq:f, dur:0.12, type:'square', vol:0.10, at:i*0.11 })); },
+    extraLife(){ [784,988,1175,1568].forEach((f,i) =>
+                   tone({ freq:f, dur:0.09, type:'square', vol:0.09, at:i*0.08 })); }
+  };
+})();
+
+/* ---- Logical screen. Real Galaga raster was 224x288 portrait. ---------- */
+const W = 224, H = 288;
+const cv = document.getElementById('screen');
+const cx = cv.getContext('2d', { alpha:false });
+
+let scale = 1;
+function fit() {
+  const availW = window.innerWidth  - 16;
+  const availH = window.innerHeight - (document.body.classList.contains('touch') ? 150 : 60);
+  scale = Math.max(1, Math.floor(Math.min(availW / W, availH / H)));   // INV-7
+  cv.width = W; cv.height = H;
+  cv.style.width  = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cx.imageSmoothingEnabled = false;
+}
+if (matchMedia('(hover: none)').matches) document.body.classList.add('touch');
+addEventListener('resize', fit);
+fit();
+
+/* ---- Sprites. Our own pixel art in the series palette — the SHAPES are
+   approximations, not claimed authentic (INV-10; noted in RUN_LOG). ------ */
+function sprite(rows) {
+  return { w: rows[0].length, h: rows.length,
+           bits: rows.map(r => [...r].map(c => c === 'X' ? 1 : 0)) };
+}
+
+const BEE = [sprite([
+  '.X.......X.','..X.....X..','.XXXXXXXXX.','XXX.XXX.XXX',
+  '.XXXXXXXXX.','..X.XXX.X..','.X...X...X.','X.........X']),
+  sprite([
+  '..X.....X..','.X.......X.','.XXXXXXXXX.','XXX.XXX.XXX',
+  '.XXXXXXXXX.','.X..XXX..X.','X....X....X','.X.......X.'])];
+
+const BFY = [sprite([
+  '..X.......X..','.XX.......XX.','.XXX.....XXX.','..XXXXXXXXX..',
+  'XXXX.XXX.XXXX','XX.XXXXXXX.XX','.X..XX.XX..X.','....X...X....']),
+  sprite([
+  'X.X.......X.X','.XX.......XX.','..XX.....XX..','..XXXXXXXXX..',
+  '.XXX.XXX.XXX.','XX.XXXXXXX.XX','X...XX.XX...X','....X...X....'])];
+
+const BOSS = [sprite([
+  '....X.....X....','....XX...XX....','..XXXXXXXXXXX..','.XXXXXXXXXXXXX.',
+  'XXXX.XXXXX.XXXX','XXXXXXXXXXXXXXX','XXX.XXXXXXX.XXX','.X...XX.XX...X.',
+  '.X..X.....X..X.','....X.....X....','...X.......X...']),
+  sprite([
+  '...X.......X...','....XX...XX....','..XXXXXXXXXXX..','.XXXXXXXXXXXXX.',
+  'XXXX.XXXXX.XXXX','XXXXXXXXXXXXXXX','XXX.XXXXXXX.XXX','.X...XX.XX...X.',
+  '.X...X...X...X.','....X.....X....','....X.....X....'])];
+
+const FIGHTER = sprite([
+  '......X......','......X......','.....XXX.....','.....XXX.....',
+  '..X..XXX..X..','..X.XXXXX.X..','..XXXXXXXXX..','.XXXXXXXXXXX.',
+  'XXXX.XXX.XXXX','XXX...X...XXX']);
+
+const BOOM = sprite([
+  '...X.....X...','X...X...X...X','.X...X.X...X.','..XX.XXX.XX..',
+  '.XXXXXXXXXXX.','..XX.XXX.XX..','.X...X.X...X.','X...X...X...X']);
+
+const SPRITES = [BEE, BFY, BOSS];                 // by kind: 0 bee, 1 bfy, 2 boss
+const KIND_COL = [TI.lightYellow, TI.mediumRed, TI.darkBlue];
+const BOSS_HURT = TI.magenta;                     // classic: boss changes colour on 1st hit
+
+function draw(s, x, y, color) {
+  cx.fillStyle = color;
+  for (let r = 0; r < s.h; r++)
+    for (let c = 0; c < s.w; c++)
+      if (s.bits[r][c]) cx.fillRect((x|0) + c, (y|0) + r, 1, 1);
+}
+
+/* ---- 5x7 font --------------------------------------------------------- */
+const GLYPHS = {
+ '0':'11111 10001 10001 10001 10001 10001 11111','1':'00100 01100 00100 00100 00100 00100 01110',
+ '2':'11111 00001 00001 11111 10000 10000 11111','3':'11111 00001 00001 11111 00001 00001 11111',
+ '4':'10001 10001 10001 11111 00001 00001 00001','5':'11111 10000 10000 11111 00001 00001 11111',
+ '6':'11111 10000 10000 11111 10001 10001 11111','7':'11111 00001 00010 00100 01000 01000 01000',
+ '8':'11111 10001 10001 11111 10001 10001 11111','9':'11111 10001 10001 11111 00001 00001 11111',
+ 'A':'01110 10001 10001 11111 10001 10001 10001','B':'11110 10001 10001 11110 10001 10001 11110',
+ 'C':'01111 10000 10000 10000 10000 10000 01111','D':'11110 10001 10001 10001 10001 10001 11110',
+ 'E':'11111 10000 10000 11110 10000 10000 11111','F':'11111 10000 10000 11110 10000 10000 10000',
+ 'G':'01111 10000 10000 10111 10001 10001 01111','H':'10001 10001 10001 11111 10001 10001 10001',
+ 'I':'11111 00100 00100 00100 00100 00100 11111','J':'00011 00001 00001 00001 00001 10001 01110',
+ 'K':'10001 10010 10100 11000 10100 10010 10001','L':'10000 10000 10000 10000 10000 10000 11111',
+ 'M':'10001 11011 10101 10101 10001 10001 10001','N':'10001 11001 10101 10011 10001 10001 10001',
+ 'O':'01110 10001 10001 10001 10001 10001 01110','P':'11110 10001 10001 11110 10000 10000 10000',
+ 'Q':'01110 10001 10001 10001 10101 10010 01101','R':'11110 10001 10001 11110 10100 10010 10001',
+ 'S':'01111 10000 10000 01110 00001 00001 11110','T':'11111 00100 00100 00100 00100 00100 00100',
+ 'U':'10001 10001 10001 10001 10001 10001 01110','V':'10001 10001 10001 10001 10001 01010 00100',
+ 'W':'10001 10001 10001 10101 10101 11011 10001','X':'10001 01010 00100 00100 00100 01010 10001',
+ 'Y':'10001 01010 00100 00100 00100 00100 00100','Z':'11111 00001 00010 00100 01000 10000 11111',
+ ' ':'00000 00000 00000 00000 00000 00000 00000','-':'00000 00000 00000 11111 00000 00000 00000',
+ '<':'00010 00100 01000 10000 01000 00100 00010','>':'01000 00100 00010 00001 00010 00100 01000',
+ ':':'00000 00100 00100 00000 00100 00100 00000','!':'00100 00100 00100 00100 00100 00000 00100',
+ '.':'00000 00000 00000 00000 00000 00000 00100','/':'00001 00010 00010 00100 01000 01000 10000',
+ '%':'11001 11010 00010 00100 01000 01011 10011'
+};
+function text(str, x, y, color) {
+  cx.fillStyle = color;
+  let px = x;
+  for (const ch of str.toUpperCase()) {
+    const g = GLYPHS[ch] || GLYPHS[' '];
+    g.split(' ').forEach((row, r) => {
+      for (let c = 0; c < 5; c++) if (row[c] === '1') cx.fillRect(px + c, y + r, 1, 1);
+    });
+    px += 6;
+  }
+}
+const textW = s => s.length * 6 - 1;
+const center = (s, y, color) => text(s, ((W - textW(s)) / 2) | 0, y, color);
+
+/* ---- Input ------------------------------------------------------------ */
+const keys = Object.create(null);
+addEventListener('keydown', e => {
+  if ([' ','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  Sound.unlock();
+  if (e.key === 'p' || e.key === 'P') { if (game.state === 'play') game.paused = !game.paused; }
+  if (e.key === 'm' || e.key === 'M') Sound.toggle();
+  if (e.key === 'Escape') toTitle();
+  if (game.state === 'entry' && game.entry) {
+    const up = e.key.toUpperCase();
+    if (up.length === 1 && LETTERS.includes(up)) {
+      game.entry.chars[game.entry.slot] = LETTERS.indexOf(up);
+      advanceEntry();
+    } else if (e.key === 'Backspace' && game.entry.slot > 0) {
+      game.entry.slot--;
+    }
+  }
+});
+addEventListener('keyup', e => { keys[e.key] = false; });
+
+function toTitle() {
+  if (game.state === 'title') return;
+  game.paused = false;
+  game.entry = null;
+  game.state = 'title';
+}
+
+/* Initials entry — the shared modal protocol. A modal state gets its OWN
+   bindings and starts with every button flagged HELD (INV-15). */
+const entryNav = {
+  left:  () => keys['ArrowLeft']  || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || touch.right || simInput.right,
+  ok:    () => keys[' '] || keys['Enter'] || touch.fire || simInput.fire
+};
+function startEntryOrTitle() {
+  if (HiScore.qualifies(game.score)) {
+    game.entry = { chars: [0,0,0], slot: 0, hold: 0, pl: true, pr: true, pf: true };
+    game.state = 'entry';
+  } else {
+    game.state = 'title';
+  }
+}
+function advanceEntry() {
+  const e = game.entry;
+  if (!e) return;
+  e.slot++;
+  if (e.slot > 2) {
+    game.lastRank = HiScore.add(e.chars.map(i => LETTERS[i]).join(''), game.score);
+    game.entry = null;
+    game.state = 'title';
+  }
+}
+
+const touch = { left:false, right:false, fire:false };
+function bindPad(id, prop) {
+  const el = document.getElementById(id);
+  const on  = e => { e.preventDefault(); Sound.unlock(); touch[prop] = true;  };
+  const off = e => { e.preventDefault(); touch[prop] = false; };
+  el.addEventListener('touchstart', on,  {passive:false});
+  el.addEventListener('touchend',   off, {passive:false});
+  el.addEventListener('touchcancel',off, {passive:false});
+  el.addEventListener('mousedown',  on);
+  el.addEventListener('mouseup',    off);
+  el.addEventListener('mouseleave', off);
+}
+bindPad('bL','left'); bindPad('bR','right'); bindPad('bF','fire');
+
+function bindTap(id, fn) {
+  const el = document.getElementById(id);
+  const h = e => { e.preventDefault(); Sound.unlock(); fn(); };
+  el.addEventListener('touchstart', h, {passive:false});
+  el.addEventListener('click', h);
+}
+
+/* ---- SWIVEL STICK (touch) — shared contract, born on rung 3. ----------
+   LEFT half of the play area = a stick whose origin is wherever the thumb
+   lands. RIGHT half = fire. Multi-touch by identifier.                   */
+const Stick = (() => {
+  const DEAD = 9;
+  let stickId = null, originX = 0, curX = 0, fireId = null;
+  const state = { active:false, ox:0, dx:0 };
+
+  function apply() {
+    const dx = curX - originX;
+    state.dx = dx;
+    touch.left  = state.active && dx < -DEAD;
+    touch.right = state.active && dx >  DEAD;
+  }
+  function start(e) {
+    const r = cv.getBoundingClientRect();
+    for (const t of e.changedTouches) {
+      const leftHalf = (t.clientX - r.left) < r.width / 2;
+      if (leftHalf && stickId === null) {
+        stickId = t.identifier; originX = curX = t.clientX;
+        state.active = true; state.ox = t.clientX - r.left;
+      } else if (!leftHalf && fireId === null) {
+        fireId = t.identifier; touch.fire = true;
+      }
+    }
+    apply(); e.preventDefault(); Sound.unlock();
+  }
+  function move(e) {
+    for (const t of e.changedTouches) if (t.identifier === stickId) curX = t.clientX;
+    apply(); e.preventDefault();
+  }
+  function end(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = null; state.active = false;
+                                      touch.left = touch.right = false; }
+      if (t.identifier === fireId)  { fireId = null; touch.fire = false; }
+    }
+    apply();
+  }
+  cv.addEventListener('touchstart',  start, { passive:false });
+  cv.addEventListener('touchmove',   move,  { passive:false });
+  cv.addEventListener('touchend',    end,   { passive:false });
+  cv.addEventListener('touchcancel', end,   { passive:false });
+  return state;
+})();
+
+bindTap('bP', () => { if (game.state === 'play') game.paused = !game.paused; });
+bindTap('bT', () => toTitle());
+bindTap('bM', () => Sound.toggle());
+
+/* Virtual input for the sim harness — bots drive THESE and nothing else. */
+const simInput = { left:false, right:false, fire:false };
+
+const held = {
+  left:  () => keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  || simInput.left,
+  right: () => keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right || simInput.right,
+  fire:  () => keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] || touch.fire || simInput.fire
+};
+
+/* ---- HIGH SCORE TABLE — shared protocol (tools/hiscore.js) ------------ */
+const HiScore = (() => {
+  const KEY = 'arcade.galaga.scores', MAX = 8;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+                       catch (e) { return []; } };
+  const store = l => { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} };
+  return {
+    list: load,
+    qualifies(score) {
+      if (score <= 0) return false;
+      const l = load();
+      return l.length < MAX || score > l[l.length - 1].s;
+    },
+    add(name, score) {
+      const l = load();
+      l.push({ n: name, s: score, d: new Date().toISOString().slice(0, 10) });
+      l.sort((a, b) => b.s - a.s);
+      const cut = l.slice(0, MAX);
+      store(cut);
+      return cut.findIndex(e => e.s === score && e.n === name) + 1;
+    },
+    clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  };
+})();
+
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';   // no space: space confirms (INV-15)
+
+function topScore() { const l = HiScore.list(); return l.length ? l[0].s : 0; }
+try { localStorage.removeItem('galaga.high'); } catch (e) {}   // one fact, one home
+
+/* ---- Starfield — the 05XX chip's RESULT, not its silicon. -------------
+   Two layers scrolling at different speeds, a fraction blinking.        */
+const stars = [];
+(() => {
+  const cols = [TI.gray, TI.cyan, TI.darkRed, TI.lightBlue, TI.darkYellow, TI.mediumGreen];
+  for (let i = 0; i < 52; i++) {
+    stars.push({ x: Math.random() * W, y: Math.random() * H,
+                 layer: i % 2, c: cols[i % cols.length],
+                 blink: i % 3 === 0, phase: Math.random() * 1600 });
+  }
+})();
+function updateStars(dt) {
+  for (const s of stars) {
+    s.y += (s.layer ? 0.022 : 0.046) * dt;
+    if (s.y > H) { s.y -= H; s.x = Math.random() * W; }
+  }
+}
+function drawStars(now) {
+  for (const s of stars) {
+    if (s.blink && (((now + s.phase) / 400 | 0) % 3) === 0) continue;
+    cx.fillStyle = s.c;
+    cx.fillRect(s.x | 0, s.y | 0, 1, 1);
+  }
+}
+
+/* =========================================================================
+   PATHS — the content of this rung (A-14).
+
+   A path is control points in normalised [0..1] x [0..1] screen space,
+   smoothed by Catmull-Rom and resampled into a polyline with cumulative
+   distances, so entities travel it at constant px/ms. Authoring a new
+   entrance or dive = writing a new array of points.
+
+   Shapes are OUR approximations of Galaga's choreography [ASSUMED in
+   ARCHAEOLOGY]. Three entrance patterns cycling per stage is sourced.
+   ========================================================================= */
+function catmullPolyline(norm) {
+  const pts = norm.map(p => [p[0] * W, p[1] * H]);
+  const out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i],
+          p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    for (let j = 0; j < 10; j++) {
+      const t = j / 10, t2 = t * t, t3 = t2 * t;
+      out.push([
+        0.5 * ((2*p1[0]) + (-p0[0]+p2[0])*t + (2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2 + (-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3),
+        0.5 * ((2*p1[1]) + (-p0[1]+p2[1])*t + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2 + (-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3)
+      ]);
+    }
+  }
+  out.push(pts[pts.length - 1].slice());
+  const cum = [0];
+  for (let i = 1; i < out.length; i++)
+    cum.push(cum[i - 1] + Math.hypot(out[i][0] - out[i-1][0], out[i][1] - out[i-1][1]));
+  return { points: out, cum, length: cum[cum.length - 1] };
+}
+function pathPoint(pl, dist) {
+  if (dist <= 0) { const p = pl.points[0]; return { x: p[0], y: p[1], done: false }; }
+  if (dist >= pl.length) {
+    const p = pl.points[pl.points.length - 1];
+    return { x: p[0], y: p[1], done: true };
+  }
+  let lo = 0, hi = pl.cum.length - 1;
+  while (lo + 1 < hi) { const m = (lo + hi) >> 1; (pl.cum[m] <= dist ? lo = m : hi = m); }
+  const seg = pl.cum[hi] - pl.cum[lo] || 1;
+  const t = (dist - pl.cum[lo]) / seg;
+  return { x: pl.points[lo][0] + (pl.points[hi][0] - pl.points[lo][0]) * t,
+           y: pl.points[lo][1] + (pl.points[hi][1] - pl.points[lo][1]) * t,
+           done: false };
+}
+const mirrorX = norm => norm.map(p => [1 - p[0], p[1]]);
+
+/* Entrance path shapes (normalised). Each ends mid-screen; the entity then
+   HOMES to its formation slot from wherever the path left it. */
+const PATH_SHAPES = {
+  topLoopL:  [[0.46,-0.05],[0.40,0.30],[0.22,0.52],[0.13,0.68],[0.30,0.78],[0.48,0.68],[0.44,0.50]],
+  topLoopR:  null,   // mirror, filled below
+  sideArcL:  [[-0.06,0.30],[0.22,0.46],[0.52,0.62],[0.78,0.52],[0.80,0.32],[0.62,0.24]],
+  sideArcR:  null,
+  /* challenge-stage fly-throughs: enter, weave, EXIT (never settle) */
+  chSweepL:  [[-0.06,0.20],[0.30,0.32],[0.62,0.48],[0.40,0.66],[0.14,0.52],[0.36,0.30],[0.70,0.16],[1.08,0.10]],
+  chSweepR:  null,
+  chSnakeT:  [[0.30,-0.06],[0.36,0.22],[0.64,0.34],[0.36,0.50],[0.64,0.66],[0.36,0.82],[0.60,1.08]],
+  chSnakeT2: null
+};
+PATH_SHAPES.topLoopR  = mirrorX(PATH_SHAPES.topLoopL);
+PATH_SHAPES.sideArcR  = mirrorX(PATH_SHAPES.sideArcL);
+PATH_SHAPES.chSweepR  = mirrorX(PATH_SHAPES.chSweepL);
+PATH_SHAPES.chSnakeT2 = mirrorX(PATH_SHAPES.chSnakeT);
+const PATHS = {};
+for (const [k, v] of Object.entries(PATH_SHAPES)) PATHS[k] = catmullPolyline(v);
+
+/* ---- Formation --------------------------------------------------------
+   40 slots, sourced: 4 bosses / 16 butterflies / 20 bees.
+   Grid: 10 columns x 5 rows. Breathing spread + slow sway [ASSUMED timing]. */
+const SLOTS = [];
+(() => {
+  const rows = [
+    { row: 0, kind: 2, cols: [3,4,5,6] },
+    { row: 1, kind: 1, cols: [1,2,3,4,5,6,7,8] },
+    { row: 2, kind: 1, cols: [1,2,3,4,5,6,7,8] },
+    { row: 3, kind: 0, cols: [0,1,2,3,4,5,6,7,8,9] },
+    { row: 4, kind: 0, cols: [0,1,2,3,4,5,6,7,8,9] }
+  ];
+  for (const r of rows) for (const c of r.cols) SLOTS.push({ row: r.row, col: c, kind: r.kind });
+})();
+const FORM_TOP = 44, PITCH_X = 17, PITCH_Y = 15;
+function slotPos(i, now) {
+  const s = SLOTS[i];
+  const spread = 1 + 0.055 * Math.sin(now / 1400);              // breathing
+  const sway = 5 * Math.sin(now / 2600);                        // side drift
+  return { x: W / 2 + sway + (s.col - 4.5) * PITCH_X * spread,
+           y: FORM_TOP + s.row * PITCH_Y + (s.row * 1.5) * (spread - 1) * 10 };
+}
+
+/* ---- Entrance scripts — pure data (A-14). ------------------------------
+   Three patterns cycling by stage number, sourced; compositions ASSUMED.  */
+const ENTRANCE_SCRIPTS = [
+  [ // pattern 0
+    { path:'topLoopL', slots:[24,25,26,27, 6,7,8,9] },
+    { path:'topLoopR', slots:[0,1,2,3, 12,13,18,19] },
+    { path:'sideArcL', slots:[4,5,10,11,14,15,16,17] },
+    { path:'sideArcR', slots:[20,21,22,23,28,29,30,31] },
+    { path:'topLoopL', slots:[32,33,34,35,36,37,38,39] }
+  ],
+  [ // pattern 1 — sides first
+    { path:'sideArcL', slots:[24,25,26,27, 6,7,8,9] },
+    { path:'sideArcR', slots:[0,1,2,3, 12,13,18,19] },
+    { path:'topLoopR', slots:[4,5,10,11,14,15,16,17] },
+    { path:'topLoopL', slots:[20,21,22,23,28,29,30,31] },
+    { path:'sideArcR', slots:[32,33,34,35,36,37,38,39] }
+  ],
+  [ // pattern 2 — both top loops leading
+    { path:'topLoopR', slots:[24,25,26,27, 6,7,8,9] },
+    { path:'topLoopL', slots:[0,1,2,3, 12,13,18,19] },
+    { path:'sideArcR', slots:[4,5,10,11,14,15,16,17] },
+    { path:'sideArcL', slots:[20,21,22,23,28,29,30,31] },
+    { path:'topLoopR', slots:[32,33,34,35,36,37,38,39] }
+  ]
+];
+const WAVE_GAP = 2500, MEMBER_GAP = 240;          // ms between waves / members
+
+/* Challenge-stage script: 5 trains x 8 = 40, fly through and exit. */
+const CHALLENGE_SCRIPT = [
+  { path:'chSnakeT',  kinds:[0,0,0,0,1,1,1,1] },
+  { path:'chSnakeT2', kinds:[0,0,0,0,1,1,1,1] },
+  { path:'chSweepL',  kinds:[1,1,0,0,0,0,1,1] },
+  { path:'chSweepR',  kinds:[0,0,1,1,1,1,0,0] },
+  { path:'chSnakeT',  kinds:[0,0,0,0,0,0,1,1] }
+];
+
+/* ---- Speeds & pacing (px/ms) — tuned by play, tagged ASSUMED ---------- */
+const FIGHTER_SPEED = 0.10;
+const SHOT_SPEED    = 0.36;
+const ENTER_SPEED   = 0.145;
+const HOME_SPEED    = 0.10;
+const DIVE_SPEED    = 0.125;
+const ESHOT_SPEED   = 0.105;
+const SUB_PX = 3;                                  // INV-1 substep ceiling
+
+const PLAYER_Y = H - 38;
+const FW = FIGHTER.w, FH = FIGHTER.h;
+
+/* ---- ENEMY SHOT POOL — fixed 8 slots, the A-13 exhibit. ----------------
+   The 1981 board leaked these slots forever when a shot spawned at X=0
+   (drawn off-screen but never released, because release only checked Y).
+   Our rules: (1) spawn VALIDATES coordinates and refuses hostile ones,
+   (2) release triggers on EVERY exit — any edge, any hit, any field clear.
+   One owner, one release condition that covers all the ways a shot dies. */
+const SHOT_POOL_SIZE = 8;
+const shotPool = Array.from({ length: SHOT_POOL_SIZE },
+                            () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0 }));
+let refusedSpawns = 0;
+function poolCount() { return shotPool.reduce((n, s) => n + (s.active ? 1 : 0), 0); }
+function spawnEnemyShot(x, y, vx, vy) {
+  // validation the original lacked: a shot outside the playfield is refused,
+  // not parked invisibly in a slot
+  if (!(x >= 2 && x <= W - 2 && y >= 0 && y <= H - 40)) { refusedSpawns++; return false; }
+  for (const s of shotPool) {
+    if (s.active) continue;
+    s.active = true; s.x = x; s.y = y;
+    s.vx = vx !== undefined ? vx : 0;
+    s.vy = vy !== undefined ? vy : ESHOT_SPEED;
+    return true;
+  }
+  return false;                                    // pool full — a real 1981 outcome
+}
+function releaseShot(s) { s.active = false; }
+function clearShotPool() { for (const s of shotPool) s.active = false; }
+
+/* ---- Game state -------------------------------------------------------- */
+const game = {
+  state: 'title',        // title | play | dying | over | entry
+  phase: 'intro',        // within play: intro | entrance | battle | challenge | tally
+  paused: false,
+  score: 0, stage: 1, lives: 2,          // reserves shown; fighter on field besides
+  nextLifeAt: 20000,
+  entry: null, lastRank: 0,
+  enemies: [],           // the 40 (or challenge transients)
+  playerShots: [],
+  boom: [],
+  fighter: null,         // { x, control, gone, invuln }
+  dual: false,
+  capture: null,         // capture sequence record
+  rescue: null,          // rescue tween record
+  entrance: null,        // { script, wave, member, timer }
+  challenge: null,       // { script, wave, member, timer, hits }
+  diveTimer: 0, divesLaunched: 0,
+  msg: null,             // { lines, t }
+  shotsFired: 0, hits: 0,
+  dyingTimer: 0, tallyTimer: 0,
+  time: 0
+};
+
+/* ---- Lifecycle: one function per event (INV-11), rebuild not repair
+   (INV-5). newGame / startStage / respawn are three different events. ---- */
+function makeFighter() {
+  return { x: (W - FW) / 2, control: true, gone: false, invuln: 0 };
+}
+
+function newGame() {
+  game.score = 0; game.stage = 1; game.lives = 2;
+  game.nextLifeAt = 20000;
+  game.dual = false; game.paused = false;
+  game.shotsFired = 0; game.hits = 0;
+  game.lastRank = 0;
+  game.capture = null; game.rescue = null; game.msg = null;
+  game.boom.length = 0;
+  game.fighter = makeFighter();
+  game.state = 'play';
+  startStage(1);
+}
+
+function isChallenge(n) { return n >= 3 && (n - 3) % 4 === 0; }
+
+function startStage(n) {
+  game.stage = n;
+  game.enemies.length = 0;
+  game.playerShots.length = 0;
+  clearShotPool();
+  game.capture = null; game.rescue = null;
+  game.divesLaunched = 0;
+  game.diveTimer = 2200;
+  game.phase = 'intro';
+  game.introTimer = 1600;
+  if (isChallenge(n)) {
+    game.challenge = { script: CHALLENGE_SCRIPT, wave: 0, member: 0, timer: 600, hits: 0 };
+    game.entrance = null;
+  } else {
+    const pat = ENTRANCE_SCRIPTS[(n - 1) % ENTRANCE_SCRIPTS.length];
+    game.entrance = { script: pat, wave: 0, member: 0, timer: 600 };
+    game.challenge = null;
+  }
+  Sound.stage();
+}
+
+/* You died with reserves left. ONLY the fighter is rebuilt; the formation
+   keeps its dead exactly as you killed them (rung 2's INV-11 scar). Diving
+   enemies are sent home and the shot field is cleared — the classic
+   "regroup after a death" beat. */
+function respawn() {
+  game.fighter = makeFighter();
+  game.fighter.invuln = 1600;
+  game.dual = false;
+  game.playerShots.length = 0;
+  clearShotPool();
+  for (const e of game.enemies) {
+    if (!e.alive) continue;
+    if (e.mode === 'dive' || e.mode === 'captureApproach' || e.mode === 'beam') sendHome(e);
+  }
+}
+
+function gameOver() {
+  game.state = 'over';
+  game.playerShots.length = 0;
+  clearShotPool();
+}
+
+/* ---- Enemies ----------------------------------------------------------- */
+function spawnEnemy(kind, slot, pathName, challenge) {
+  const e = {
+    kind, slot,                       // slot: formation index, or -1 in challenge
+    hp: kind === 2 ? 2 : 1,
+    alive: true,
+    mode: challenge ? 'transit' : 'enter',
+    path: PATHS[pathName], dist: 0,
+    speed: ENTER_SPEED,
+    x: 0, y: -12,
+    group: null, fired: 0, captive: false,
+    frame: 0
+  };
+  const p0 = pathPoint(e.path, 0);
+  e.x = p0.x; e.y = p0.y;
+  game.enemies.push(e);
+  return e;
+}
+
+function sendHome(e) {
+  e.mode = 'home';
+  e.path = null; e.group = null;
+  e.beamT = 0;
+}
+
+function slottedEnemies() { return game.enemies.filter(e => e.alive && e.mode === 'slot'); }
+function aliveEnemies()   { return game.enemies.filter(e => e.alive); }
+
+/* Dive path generated from the enemy's CURRENT position toward the player —
+   data in, polyline out. Escorts get a lateral offset of the same shape. */
+function divePath(sx, sy, targetX, off) {
+  off = off || 0;
+  const dirR = sx < W / 2 ? 1 : -1;
+  const tx = Math.max(14, Math.min(W - 14, targetX));
+  return catmullPolyline([
+    [(sx + off) / W, sy / H],
+    [(sx + off + dirR * 30) / W, (sy + 34) / H],
+    [(sx + off - dirR * 24) / W, (sy + 78) / H],
+    [(tx + off - dirR * 30) / W, 0.62],
+    [(tx + off) / W, (H - 62) / H],
+    [(tx + off + dirR * 26) / W, (H + 16) / H]
+  ]);
+}
+
+function launchDive(now) {
+  const pool = slottedEnemies();
+  if (!pool.length) return;
+  const bosses = pool.filter(e => e.kind === 2);
+  const wantBoss = bosses.length && (game.divesLaunched % 4 === 3 ||
+                    bosses.some(b => b.captive));
+  const fx = game.fighter ? game.fighter.x + FW / 2 : W / 2;
+
+  if (wantBoss) {
+    // captive-carrying boss dives in preference — that's the rescue window
+    const b = bosses.find(x => x.captive) || bosses[Math.random() * bosses.length | 0];
+    const canCapture = !b.captive && !game.dual && !game.capture &&
+                       !game.enemies.some(e => e.alive && e.captive) &&
+                       Math.random() < 0.5;
+    if (canCapture) {
+      const hx = Math.max(36, Math.min(W - 36, fx + (Math.random() * 60 - 30)));
+      b.mode = 'captureApproach';
+      b.path = catmullPolyline([
+        [b.x / W, b.y / H],
+        [(b.x + (b.x < W/2 ? 34 : -34)) / W, (b.y + 52) / H],
+        [(hx + (b.x < W/2 ? -30 : 30)) / W, 0.45],
+        [hx / W, (H - 128) / H]
+      ]);
+      b.dist = 0; b.speed = DIVE_SPEED; b.fired = 0;
+      game.divesLaunched++;
+      Sound.dive();
+      return;
+    }
+    // normal boss dive with up to 2 butterfly escorts
+    const group = { boss: b, escorts: [] };
+    const wings = pool
+      .filter(e => e.kind === 1)
+      .sort((a, b2) => Math.abs(SLOTS[a.slot].col - SLOTS[b.slot].col) -
+                       Math.abs(SLOTS[b2.slot].col - SLOTS[b.slot].col))
+      .slice(0, 2);
+    b.mode = 'dive'; b.path = divePath(b.x, b.y, fx, 0);
+    b.dist = 0; b.speed = DIVE_SPEED; b.fired = 0; b.group = group;
+    wings.forEach((e2, i) => {
+      e2.mode = 'dive';
+      e2.path = divePath(b.x, b.y, fx, i === 0 ? -17 : 17);
+      e2.dist = -(26 + i * 20);          // negative dist = trailing the leader
+      e2.speed = DIVE_SPEED; e2.fired = 0; e2.group = group;
+      group.escorts.push(e2);
+    });
+    game.divesLaunched++;
+    Sound.dive();
+    return;
+  }
+
+  const smalls = pool.filter(e => e.kind !== 2);
+  if (!smalls.length) return;
+  const e = smalls[Math.random() * smalls.length | 0];
+  e.mode = 'dive';
+  e.path = divePath(e.x, e.y, fx, 0);
+  e.dist = 0; e.speed = DIVE_SPEED * (e.kind === 0 ? 1.05 : 1);
+  e.fired = 0; e.group = null;
+  game.divesLaunched++;
+  Sound.dive();
+}
+
+/* ---- Scoring — the sourced table. Flying pays double; a boss with live
+   escorts pays up to 1600 (A-15: danger is priced). ---------------------- */
+function killPoints(e) {
+  if (game.phase === 'challenge') return 100;
+  const flying = e.mode !== 'slot';
+  if (e.kind === 0) return flying ? 100 : 50;
+  if (e.kind === 1) return flying ? 160 : 80;
+  if (!flying) return 150;
+  const esc = e.group ? e.group.escorts.filter(x => x.alive).length : 0;
+  return esc === 2 ? 1600 : esc === 1 ? 800 : 400;
+}
+
+function addScore(pts) {
+  game.score += pts;
+  while (game.score >= game.nextLifeAt) {
+    game.lives++;
+    Sound.extraLife();
+    flashMsg(['EXTRA FIGHTER'], 1300);
+    game.nextLifeAt = game.nextLifeAt === 20000 ? 70000 : game.nextLifeAt + 70000;
+  }
+}
+
+function flashMsg(lines, t) { game.msg = { lines, t }; }
+
+function killEnemy(e, byShot) {
+  const pts = killPoints(e);
+  e.alive = false;
+  addScore(pts);
+  if (game.phase === 'challenge' && game.challenge) game.challenge.hits++;
+  if (byShot) game.hits++;
+  game.boom.push({ x: e.x - 1, y: e.y, t: 220, col: e.kind === 2 ? TI.lightBlue : TI.lightYellow,
+                   label: pts >= 400 ? String(pts) : null });
+  if (e.kind === 2) Sound.bossDie(); else Sound.hitSmall();
+
+  if (e.captive) {
+    // the boss dies holding our ship
+    if (e.mode !== 'slot') {                       // shot while diving -> RESCUE
+      game.rescue = { x: e.x + 1, y: e.y, t: 0 };
+      flashMsg(['FIGHTER RESCUED'], 1600);
+      Sound.rescue();
+    } else {                                       // shot in formation -> captive lost
+      game.boom.push({ x: e.x + 1, y: e.y - 8, t: 500, col: TI.mediumRed });
+      flashMsg(['CAPTIVE LOST'], 1600);
+    }
+    e.captive = false;
+  }
+  if (e.mode === 'beam' && game.capture && game.capture.boss === e && game.capture.stage === 'pull') {
+    // killing the boss mid-pull frees the fighter where it hangs
+    game.capture = null;
+    game.fighter.control = true;
+  }
+}
+
+/* ---- Fighter damage ---------------------------------------------------- */
+function fighterHit(sideX) {
+  const f = game.fighter;
+  if (!f || f.gone || f.invuln > 0) return;
+  if (game.dual) {
+    // one ship of the pair dies; play continues as single, no reserve spent
+    game.dual = false;
+    game.boom.push({ x: sideX, y: PLAYER_Y, t: 500, col: TI.mediumRed });
+    f.invuln = 900;
+    Sound.death();
+    return;
+  }
+  game.boom.push({ x: f.x, y: PLAYER_Y, t: 900, col: TI.mediumRed });
+  f.gone = true;
+  Sound.death();
+  game.state = 'dying';
+  game.dyingTimer = 1400;
+}
+
+/* ---- Capture sequence -------------------------------------------------- */
+function beginCapture(boss) {
+  const f = game.fighter;
+  game.capture = { boss, stage: 'pull', t: 0, fx: f.x, fy: PLAYER_Y };
+  f.control = false;
+  Sound.captured();
+}
+
+function updateCapture(dt) {
+  const c = game.capture;
+  if (!c) return;
+  const b = c.boss;
+  if (!b.alive) { game.capture = null; if (game.fighter) game.fighter.control = true; return; }
+  c.t += dt;
+  if (c.stage === 'pull') {
+    const k = Math.min(1, c.t / 1000);
+    c.fx = c.fx + (b.x - c.fx) * 0.08;
+    c.fy = c.fy + ((b.y + 10) - c.fy) * 0.06;
+    if (k >= 1 || Math.abs(c.fy - (b.y + 10)) < 4) {
+      b.captive = true;
+      sendHome(b);
+      c.stage = 'taken'; c.t = 0;
+      game.fighter.gone = true;
+      flashMsg(['FIGHTER CAPTURED'], 1800);
+    }
+  } else if (c.stage === 'taken') {
+    if (c.t > 1800) {
+      game.capture = null;
+      game.lives--;
+      if (game.lives < 0) { gameOver(); return; }
+      respawn();
+    }
+  }
+}
+
+function updateRescue(dt) {
+  const r = game.rescue;
+  if (!r || !game.fighter) return;
+  r.t += dt;
+  const f = game.fighter;
+  const tx = f.x + FW + 2, ty = PLAYER_Y;
+  r.x += (tx - r.x) * Math.min(1, dt / 240);
+  r.y += (ty - r.y) * Math.min(1, dt / 240);
+  if (Math.abs(r.x - tx) < 3 && Math.abs(r.y - ty) < 3) {
+    game.rescue = null;
+    game.dual = true;
+  }
+}
+
+/* ---- Player shots ------------------------------------------------------ */
+let firePrev = false;
+function tryFire() {
+  const f = game.fighter;
+  if (!f || f.gone || !f.control) return;
+  const max = game.dual ? 4 : 2;                   // sourced: two per fighter
+  if (game.playerShots.length + (game.dual ? 2 : 1) > max) return;
+  game.playerShots.push({ x: f.x + (FW / 2 | 0), y: PLAYER_Y - 2 });
+  game.shotsFired++;
+  if (game.dual) {
+    game.playerShots.push({ x: f.x + FW + 2 + (FW / 2 | 0), y: PLAYER_Y - 2 });
+    game.shotsFired++;
+  }
+  Sound.shoot();
+}
+
+/* One shot vs the world. Returns true if the shot is consumed. */
+function shotConsumed(sh) {
+  if (sh.y < 8) return true;
+  for (const e of game.enemies) {
+    if (!e.alive) continue;
+    const spr = SPRITES[e.kind][0];
+    if (sh.x >= e.x && sh.x < e.x + spr.w && sh.y >= e.y && sh.y < e.y + spr.h) {
+      e.hp--;
+      if (e.hp <= 0) killEnemy(e, true);
+      else { game.hits++; Sound.bossHit(); }       // boss wounded, colour flips
+      return true;                                 // exactly one hit per shot
+    }
+  }
+  return false;
+}
+
+/* ---- Enemy behaviour --------------------------------------------------- */
+function updateEnemy(e, dt, now) {
+  if (!e.alive) return;
+  e.frame = (now / 260 | 0) % 2;
+
+  if (e.mode === 'slot') {
+    const p = slotPos(e.slot, now);
+    e.x = p.x; e.y = p.y;
+    return;
+  }
+
+  if (e.mode === 'home') {
+    const p = slotPos(e.slot, now);
+    const dx = p.x - e.x, dy = p.y - e.y;
+    const d = Math.hypot(dx, dy);
+    const step = HOME_SPEED * dt;
+    if (d <= step) { e.mode = 'slot'; e.x = p.x; e.y = p.y; }
+    else { e.x += dx / d * step; e.y += dy / d * step; }
+    return;
+  }
+
+  if (e.mode === 'enter' || e.mode === 'transit' || e.mode === 'dive' ||
+      e.mode === 'captureApproach') {
+    e.dist += e.speed * dt;
+    if (e.dist < 0) return;                        // escort trailing its leader
+    const p = pathPoint(e.path, e.dist);
+    e.x = p.x; e.y = p.y;
+
+    if (e.mode === 'dive' && game.fighter && !game.fighter.gone &&
+        e.fired < 2 && e.y > 70 && e.y < 190 && Math.random() < dt / 420) {
+      const fx = game.fighter.x + FW / 2;
+      const dy = (PLAYER_Y - e.y) / ESHOT_SPEED;
+      const vx = Math.max(-0.05, Math.min(0.05, (fx - e.x) / Math.max(1, dy)));
+      if (spawnEnemyShot(e.x + SPRITES[e.kind][0].w / 2, e.y + 8, vx, ESHOT_SPEED))
+        e.fired++;
+    }
+
+    if (p.done) {
+      if (e.mode === 'enter') { e.mode = 'home'; e.path = null; }
+      else if (e.mode === 'transit') { e.alive = false; e.exited = true; }
+      else if (e.mode === 'dive') {
+        // classic loop: exit the bottom, re-enter from the top, then home
+        e.y = -12; e.mode = 'home'; e.path = null; e.group = null;
+      } else if (e.mode === 'captureApproach') {
+        e.mode = 'beam'; e.beamT = 0; e.beamStep = 0;
+      }
+    }
+    return;
+  }
+
+  if (e.mode === 'beam') {
+    e.beamT += dt;
+    if ((e.beamT / 300 | 0) > e.beamStep) { e.beamStep = e.beamT / 300 | 0; Sound.beam(e.beamStep); }
+    const active = e.beamT > 500 && e.beamT < 2300;
+    const f = game.fighter;
+    if (active && f && !f.gone && f.control && !game.dual && !game.capture) {
+      const fx = f.x + FW / 2;
+      if (Math.abs(fx - (e.x + SPRITES[2][0].w / 2)) < 20) beginCapture(e);
+    }
+    if (e.beamT > 2800) {
+      // nobody caught — swing out the bottom and loop home
+      e.mode = 'dive';
+      e.path = catmullPolyline([
+        [e.x / W, e.y / H],
+        [(e.x + (e.x < W/2 ? 40 : -40)) / W, (H - 58) / H],
+        [(e.x + (e.x < W/2 ? 14 : -14)) / W, (H + 16) / H]
+      ]);
+      e.dist = 0; e.group = null;
+    }
+    return;
+  }
+}
+
+/* ---- Phase drivers ----------------------------------------------------- */
+function updateEntrance(dt) {
+  const en = game.entrance;
+  if (!en) return;
+  en.timer -= dt;
+  if (en.wave >= en.script.length) {
+    if (aliveEnemies().every(e => e.mode === 'slot')) game.phase = 'battle';
+    return;
+  }
+  if (en.timer <= 0) {
+    const wave = en.script[en.wave];
+    const slot = wave.slots[en.member];
+    spawnEnemy(SLOTS[slot].kind, slot, wave.path, false);
+    en.member++;
+    if (en.member >= wave.slots.length) { en.wave++; en.member = 0; en.timer = WAVE_GAP; }
+    else en.timer = MEMBER_GAP;
+  }
+}
+
+function updateChallenge(dt) {
+  const ch = game.challenge;
+  if (!ch) return;
+  ch.timer -= dt;
+  if (ch.wave < ch.script.length && ch.timer <= 0) {
+    const wave = ch.script[ch.wave];
+    const e = spawnEnemy(wave.kinds[ch.member], -1, wave.path, true);
+    e.speed = ENTER_SPEED * 1.15;
+    ch.member++;
+    if (ch.member >= wave.kinds.length) { ch.wave++; ch.member = 0; ch.timer = WAVE_GAP; }
+    else ch.timer = MEMBER_GAP;
+  }
+  if (ch.wave >= ch.script.length && aliveEnemies().length === 0) {
+    game.phase = 'tally';
+    game.tallyTimer = 3600;
+    if (ch.hits === 40) { addScore(10000); Sound.perfect(); }
+  }
+}
+
+/* ---- Update ------------------------------------------------------------ */
+function update(dt) {
+  game.time += dt;
+  const now = game.time;
+  updateStars(dt);
+
+  for (let i = game.boom.length - 1; i >= 0; i--) {
+    game.boom[i].t -= dt;
+    if (game.boom[i].t <= 0) game.boom.splice(i, 1);
+  }
+  if (game.msg) { game.msg.t -= dt; if (game.msg.t <= 0) game.msg = null; }
+
+  if (game.state === 'title') {
+    if (held.fire() && !firePrev) newGame();
+    firePrev = held.fire();
+    return;
+  }
+  if (game.state === 'entry') {
+    const e = game.entry;
+    const L = entryNav.left(), Rr = entryNav.right(), OK = entryNav.ok();
+    const cyc = d => { e.chars[e.slot] = (e.chars[e.slot] + d + LETTERS.length) % LETTERS.length; };
+    e.hold -= dt;
+    if (L  && !e.pl) { cyc(-1); e.hold = 380; }
+    if (Rr && !e.pr) { cyc(+1); e.hold = 380; }
+    if ((L || Rr) && e.hold <= 0) { cyc(L ? -1 : +1); e.hold = 110; }
+    if (OK && !e.pf) advanceEntry();
+    e.pl = L; e.pr = Rr; e.pf = OK;
+    firePrev = OK;
+    return;
+  }
+  if (game.state === 'over') {
+    if (held.fire() && !firePrev) startEntryOrTitle();
+    firePrev = held.fire();
+    return;
+  }
+  if (game.state === 'dying') {
+    game.dyingTimer -= dt;
+    if (game.dyingTimer <= 0) {
+      game.lives--;
+      if (game.lives < 0) gameOver();
+      else { respawn(); game.state = 'play'; }
+    }
+    return;
+  }
+  if (game.paused) { firePrev = held.fire(); return; }
+
+  /* ---- play ---- */
+  const f = game.fighter;
+  if (f) {
+    if (f.invuln > 0) f.invuln -= dt;
+    if (f.control && !f.gone) {
+      if (held.left())  f.x -= FIGHTER_SPEED * dt;
+      if (held.right()) f.x += FIGHTER_SPEED * dt;
+      const wid = game.dual ? FW * 2 + 2 : FW;
+      f.x = Math.max(4, Math.min(W - 4 - wid, f.x));
+      const fr = held.fire();
+      if (fr && !firePrev) tryFire();
+      firePrev = fr;
+    } else firePrev = held.fire();
+  }
+
+  // phases
+  if (game.phase === 'intro') {
+    game.introTimer -= dt;
+    if (game.introTimer <= 0) game.phase = game.challenge ? 'challenge' : 'entrance';
+  }
+  else if (game.phase === 'entrance') updateEntrance(dt);
+  else if (game.phase === 'challenge') updateChallenge(dt);
+  else if (game.phase === 'tally') {
+    game.tallyTimer -= dt;
+    if (game.tallyTimer <= 0) startStage(game.stage + 1);
+  }
+  else if (game.phase === 'battle') {
+    game.diveTimer -= dt;
+    if (game.diveTimer <= 0) {
+      launchDive(now);
+      game.diveTimer = Math.max(1100, 2600 - (game.stage - 1) * 150) *
+                       (0.75 + Math.random() * 0.5);
+    }
+    if (aliveEnemies().length === 0) startStage(game.stage + 1);
+  }
+
+  // enemies
+  for (const e of game.enemies) updateEnemy(e, dt, now);
+
+  updateCapture(dt);
+  updateRescue(dt);
+
+  // player shots, substepped (INV-1, vector recomputed per substep INV-12)
+  for (let i = game.playerShots.length - 1; i >= 0; i--) {
+    const sh = game.playerShots[i];
+    const total = SHOT_SPEED * dt;
+    const steps = Math.max(1, Math.ceil(total / SUB_PX));
+    let gone = false;
+    for (let s = 0; s < steps && !gone; s++) {
+      sh.y -= total / steps;
+      if (shotConsumed(sh)) gone = true;
+    }
+    if (gone) game.playerShots.splice(i, 1);
+  }
+
+  // enemy shots from the pool, substepped; release on EVERY exit (A-13)
+  for (const s of shotPool) {
+    if (!s.active) continue;
+    const totY = s.vy * dt, totX = s.vx * dt;
+    const steps = Math.max(1, Math.ceil(Math.abs(totY) / SUB_PX));
+    let released = false;
+    for (let k = 0; k < steps && !released; k++) {
+      s.x += totX / steps; s.y += totY / steps;
+      if (s.x < 0 || s.x > W || s.y < 0 || s.y > H - 14) { released = true; break; }
+      if (f && !f.gone && f.invuln <= 0 && s.y >= PLAYER_Y && s.y < PLAYER_Y + FH) {
+        const wid = game.dual ? FW * 2 + 2 : FW;
+        if (s.x >= f.x && s.x < f.x + wid) {
+          released = true;
+          fighterHit(s.x > f.x + FW ? f.x + FW + 2 : f.x);
+        }
+      }
+    }
+    if (released) releaseShot(s);
+  }
+
+  // enemy-vs-fighter collision (ramming). Diving enemy dies too. [ASSUMED:
+  // points awarded as a flying kill]
+  if (f && !f.gone && f.invuln <= 0) {
+    const wid = game.dual ? FW * 2 + 2 : FW;
+    for (const e of game.enemies) {
+      if (!e.alive || e.mode === 'slot') continue;
+      const spr = SPRITES[e.kind][0];
+      if (e.x + spr.w > f.x && e.x < f.x + wid &&
+          e.y + spr.h > PLAYER_Y && e.y < PLAYER_Y + FH) {
+        killEnemy(e, false);
+        fighterHit(e.x);
+        break;
+      }
+    }
+  }
+}
+
+/* ---- Render ------------------------------------------------------------ */
+function drawFighterSprite(x, col) { draw(FIGHTER, x, PLAYER_Y, col); }
+
+function drawBeam(e) {
+  const t = e.beamT;
+  const grow = Math.min(1, t / 500);
+  const fade = t > 2300 ? Math.max(0, 1 - (t - 2300) / 500) : 1;
+  const cxr = e.x + SPRITES[2][0].w / 2;
+  const topY = e.y + SPRITES[2][0].h;
+  const botY = Math.min(H - 40, topY + 96 * grow);
+  const halfTop = 3, halfBot = 24 * grow;
+  const bands = 7;
+  for (let i = 0; i < bands; i++) {
+    const k0 = i / bands, k1 = (i + 0.55) / bands;
+    const phase = ((t / 110 | 0) + i) % 3;
+    if (!fade || phase === 2) continue;
+    cx.fillStyle = phase === 0 ? TI.cyan : TI.lightBlue;
+    const y0 = topY + (botY - topY) * k0, y1 = topY + (botY - topY) * k1;
+    const h0 = halfTop + (halfBot - halfTop) * k0, h1 = halfTop + (halfBot - halfTop) * k1;
+    // trapezoid drawn as 1px rows — keeps the pixel discipline
+    for (let y = y0; y < y1; y++) {
+      const kk = (y - topY) / Math.max(1, botY - topY);
+      const half = halfTop + (halfBot - halfTop) * kk;
+      cx.fillRect((cxr - half) | 0, y | 0, (half * 2) | 0, 1);
+    }
+  }
+}
+
+function render() {
+  const now = game.time;
+  cx.fillStyle = TI.black;
+  cx.fillRect(0, 0, W, H);
+  drawStars(performance.now());
+
+  // HUD
+  text('SCORE', 6, 4, TI.gray);
+  text(String(game.score).padStart(6,'0'), 6, 12, TI.white);
+  const hs = 'HI ' + String(Math.max(topScore(), game.score)).padStart(6,'0');
+  text(hs, W - textW(hs) - 6, 4, TI.gray);
+  if (Sound.muted) center('SOUND OFF', 4, '#555');
+
+  if (game.state === 'title') {
+    center('GALAGA', 40, TI.mediumRed);
+    center('TI-99/4A PALETTE', 54, '#444');
+
+    const list = HiScore.list();
+    center('HIGH SCORES', 76, TI.cyan);
+    if (!list.length) {
+      center('NO SCORES YET', 96, '#555');
+      center('BE THE FIRST', 108, '#444');
+    } else {
+      let y = 92;
+      list.forEach((e, i) => {
+        const fresh = game.lastRank === i + 1;
+        const blink = fresh && ((performance.now()/300|0) % 2);
+        const col = blink ? TI.white : fresh ? TI.lightYellow : TI.gray;
+        text(String(i+1).padStart(2,' '), 42, y, '#555');
+        text(e.n, 66, y, col);
+        text(String(e.s).padStart(6,'0'), 102, y, col);
+        text(e.d.slice(5), 152, y, '#3d3d3d');
+        y += 10;
+      });
+    }
+
+    center(matchMedia('(hover: none)').matches ? 'TAP FIRE TO START' : 'PRESS SPACE TO START',
+           192, ((performance.now()/500|0) % 2) ? TI.lightYellow : TI.darkYellow);
+
+    // scoring legend, centred by computation (rung 2's lesson)
+    const frame = (performance.now()/400|0) % 2;
+    const legend = [
+      { spr: BEE[frame],  pts: '50',  col: TI.lightYellow },
+      { spr: BFY[frame],  pts: '80',  col: TI.mediumRed },
+      { spr: BOSS[frame], pts: '150', col: TI.darkBlue }
+    ];
+    const GAP_SPR = 4, GAP_ITEM = 11;
+    const itemW = it => it.spr.w + GAP_SPR + textW(it.pts);
+    const totalW = legend.reduce((n, it) => n + itemW(it), 0) + GAP_ITEM * (legend.length - 1);
+    let lx = ((W - totalW) / 2) | 0;
+    for (const it of legend) {
+      draw(it.spr, lx, 214, it.col);
+      text(it.pts, lx + it.spr.w + GAP_SPR, 216, it.col);
+      lx += itemW(it) + GAP_ITEM;
+    }
+    center('X2 WHILE DIVING', 236, '#555');
+    return;
+  }
+
+  if (game.state === 'entry') {
+    center('NEW HIGH SCORE', 76, TI.lightYellow);
+    center(String(game.score), 96, TI.white);
+    center('ENTER YOUR INITIALS', 118, '#666');
+    const e = game.entry;
+    for (let i = 0; i < 3; i++) {
+      const x = (W/2|0) - 21 + i*16;
+      const active = i === e.slot;
+      const blink = active && ((performance.now()/300|0) % 2);
+      text(LETTERS[e.chars[i]], x, 140, blink ? TI.white : active ? TI.lightYellow : TI.gray);
+      if (active) { cx.fillStyle = TI.lightYellow; cx.fillRect(x, 150, 5, 1); }
+    }
+    center(matchMedia('(hover: none)').matches
+      ? 'SWIVEL PICKS  -  FIRE LOCKS IN'
+      : 'ARROWS OR TYPE  -  SPACE LOCKS IN', 176, '#555');
+    return;
+  }
+
+  // beams under everything else
+  for (const e of game.enemies)
+    if (e.alive && e.mode === 'beam') drawBeam(e);
+
+  // enemies
+  for (const e of game.enemies) {
+    if (!e.alive) continue;
+    const col = e.kind === 2 ? (e.hp === 1 ? BOSS_HURT : KIND_COL[2]) : KIND_COL[e.kind];
+    draw(SPRITES[e.kind][e.frame], e.x, e.y, col);
+    if (e.captive) draw(FIGHTER, e.x + 1, e.y - FH - 1, TI.mediumRed);
+  }
+
+  // capture pull animation — the fighter dragged up the beam
+  if (game.capture && game.capture.stage === 'pull')
+    draw(FIGHTER, game.capture.fx, game.capture.fy, TI.mediumRed);
+
+  // rescue ship gliding down to dock
+  if (game.rescue) draw(FIGHTER, game.rescue.x, game.rescue.y, TI.mediumRed);
+
+  // fighter
+  const f = game.fighter;
+  if (f && !f.gone && game.state !== 'dying') {
+    const blink = f.invuln > 0 && ((performance.now()/120|0) % 2);
+    if (!blink) {
+      drawFighterSprite(f.x, TI.white);
+      if (game.dual) drawFighterSprite(f.x + FW + 2, TI.white);
+    }
+  }
+
+  // shots
+  cx.fillStyle = TI.white;
+  for (const sh of game.playerShots) cx.fillRect(sh.x|0, sh.y|0, 1, 4);
+  cx.fillStyle = TI.lightRed;
+  for (const s of shotPool) if (s.active) cx.fillRect(s.x|0, s.y|0, 1, 3);
+
+  // explosions
+  for (const e of game.boom) {
+    if (e.label) text(e.label, e.x, e.y, TI.lightYellow);
+    else draw(BOOM, e.x, e.y, e.col);
+  }
+
+  // bottom HUD: reserves left, stage right
+  cx.fillStyle = '#1a1a1a';
+  cx.fillRect(0, H - 13, W, 1);
+  for (let i = 0; i < Math.min(game.lives, 6); i++)
+    draw(FIGHTER, 5 + i * 12, H - 11, TI.lightGreen);
+  const stg = 'STG ' + game.stage;
+  text(stg, W - textW(stg) - 5, H - 10, isChallenge(game.stage) ? TI.cyan : TI.darkYellow);
+
+  // banners
+  if (game.phase === 'intro')
+    center(isChallenge(game.stage) ? 'CHALLENGING STAGE' : 'STAGE ' + game.stage,
+           130, isChallenge(game.stage) ? TI.cyan : TI.lightYellow);
+  if (game.phase === 'tally' && game.challenge) {
+    center('RESULTS', 112, TI.cyan);
+    center('HITS ' + game.challenge.hits + ' OF 40', 128, TI.white);
+    if (game.challenge.hits === 40) center('PERFECT! BONUS 10000', 144, TI.lightYellow);
+    // no bonus line otherwise — the 100/hit was scored as it happened
+  }
+  if (game.msg) center(game.msg.lines[0], 160, TI.lightYellow);
+
+  if (game.paused) center('PAUSED', 120, TI.lightYellow);
+  if (game.state === 'over') {
+    center('GAME OVER', 104, TI.mediumRed);
+    center('SHOTS FIRED ' + game.shotsFired, 124, TI.gray);
+    center('HITS ' + game.hits, 136, TI.gray);
+    const ratio = game.shotsFired ? Math.round(game.hits / game.shotsFired * 100) : 0;
+    center('HIT-MISS RATIO ' + ratio + '%', 148, TI.white);
+    if (HiScore.qualifies(game.score)) center('NEW HIGH SCORE', 166, TI.lightYellow);
+    center('FIRE TO CONTINUE', 182, TI.gray);
+  }
+}
+
+/* ---- Loop -------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(50, now - last);   // INV-2: clamp defines max stride
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---- Test hook (INV-6) + sim contract ---------------------------------- */
+window.__galaga = {
+  get state()   { return game.state; },
+  get score()   { return game.score; },
+  get alive()   { return game.enemies.filter(e => e.alive).length; },
+  get slotted() { return game.enemies.filter(e => e.alive && e.mode === 'slot').length; },
+  get entities(){ return game.enemies.length + game.playerShots.length +
+                         game.boom.length + poolCount(); },
+  get poolShots(){ return poolCount(); },
+  get refusedSpawns(){ return refusedSpawns; },
+  game, newGame, startStage, respawn, toTitle, Sound, HiScore, LETTERS,
+  startEntryOrTitle, advanceEntry, topScore, Stick, TI,
+  spawnEnemyShot, clearShotPool, shotPool, SLOTS, PATHS, slotPos,
+  killPoints, isChallenge, launchDive, render,
+  geom: { W, H, PLAYER_Y, PADDLE_SPEED: FIGHTER_SPEED, FW, FH,
+          SHOT_POOL_SIZE, FORM_TOP, PITCH_X, PITCH_Y },
+  sim: {
+    input: simInput,
+    step(dt) { update(dt); },
+    reset() { simInput.left = simInput.right = simInput.fire = false; },
+    observe() {
+      const f = game.fighter;
+      return { state: game.state, phase: game.phase, score: game.score,
+               stage: game.stage, lives: game.lives, dual: game.dual,
+               alive: game.enemies.filter(e => e.alive).length,
+               slotted: game.enemies.filter(e => e.alive && e.mode === 'slot').length,
+               poolShots: poolCount(),
+               paddleX: f ? f.x : 0,
+               fighter: f ? { x: f.x, gone: f.gone, control: f.control } : null,
+               captive: game.enemies.some(e => e.alive && e.captive) };
+    }
+  }
+};
+</script>

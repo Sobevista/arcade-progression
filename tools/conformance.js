@@ -155,18 +155,32 @@ const Conformance = (() => {
       check: async () => {
         // Read this rung's own source and prove it pulls in nothing external.
         // Modularity you have not measured is modularity you do not have.
-        let src = '';
-        try { src = await fetch(location.pathname.replace(/\/$/, '') + '/index.html'
-                                  .replace(/index\.html$/, 'index.html'))
-                        .then(r => r.text()); }
-        catch (e) { try { src = await fetch('index.html').then(r => r.text()); }
-                    catch (e2) { return { pass: null, detail: 'could not read own source' }; } }
+        //
+        // FIXED 2026-07-19 (INV-19): the original built the URL as
+        // pathname + 'index.html', producing /rungs/NN/index.html/index.html —
+        // a 404 — and then ran its regexes over the ~0-byte error page. It
+        // passed VACUOUSLY on every rung from the day it was written, and the
+        // "(0KB)" in its own detail string was the tell. A check must abstain
+        // loudly when it cannot observe its subject; it must never pass on
+        // the absence of its input.
+        let src = '', how = '';
+        for (const url of [location.pathname, 'index.html']) {
+          try {
+            const r = await fetch(url, { cache: 'no-store' });
+            if (r.ok) { src = await r.text(); how = url; break; }
+          } catch (e) { /* file:// or network — try next */ }
+        }
+        if (!src || src.length < 1000) {
+          return { pass: null,
+                   detail: 'COULD NOT READ OWN SOURCE (' + src.length +
+                           ' bytes) — abstaining, NOT passing' };
+        }
         const tags    = (src.match(/<(script|link|img|iframe|audio|video)[^>]*\s(src|href)\s*=/gi) || []).length;
         const fetches = (src.match(/\bfetch\s*\(/g) || []).length;
         const imports = (src.match(/\bimport\s+[\w{*]/g) || []).length;
         return { pass: tags === 0 && fetches === 0 && imports === 0,
                  detail: `external tags=${tags} fetch=${fetches} import=${imports}` +
-                         ` (${Math.round(src.length/1024)}KB)` };
+                         ` (${Math.round(src.length/1024)}KB via ${how})` };
       }
     }
   };
