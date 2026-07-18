@@ -381,6 +381,14 @@ Now implemented. It reads as a dramatic spike rather than a death spiral specifi
 | UX-29 | Parsec raster | 256×192 — the TI-99/4A's own resolution, landscape | Rung 5's subject is the machine; using its true raster is the homage where it belongs (in craft). Wumpus stays on the series 224×288 portrait since it has no scrolling axis | If phone-portrait play makes the landscape canvas unusably small — revisit with a rotated layout |
 | UX-30 | Parsec marathon at the ramp cap | Authored ceiling at level 8 (1.77×), levels then repeat at constant difficulty — long runs possible for a skilled player | Sourced: level 16 repeats and 2M-point marathons were the original's celebrated culture. A-18 forbids the overflow wall, not the marathon | If family playtest finds sessions overstaying their welcome, add fatigue (fuel drain scaling) — a *deliberate* ceiling, never an accidental one |
 
+## Rung 6 — TI-99/4A part II (Munch Man + Anteater) — decisions
+
+| # | Decision | Chose | Reasoning | Re-pick trigger |
+|---|---|---|---|---|
+| UX-31 | Frightened Hoonos: "black" on a black field | Dark body (#444) on a faint backing square, blinking near the window's end | Sourced: "the Hoonos turn black" — but literal black on our black background is invisible, and an invisible edible enemy is information destroyed (the A-10/INV-13 lesson). Reads as "powered down" while staying visible | If a source surfaces showing the original's maze background colour, match it and go literal black |
+| UX-32 | Anteater ant movement: stop on stick release — **2026-07-19 [DANIEL, TESTIMONY — played the original]** | Ant moves only while a direction is held; stops at the next cell centre | First build coasted Pac-Man-style — which was never a decision, just the shared mover's default. Dig Dug lineage stops on release, and Daniel's memory of the original agrees. Stopping also makes egg-fuse timing deliberate (A-23) | If a source contradicts the testimony — but two independent lines already agree |
+| UX-33 | Anteater rocks shatter after falling — **2026-07-19 [DANIEL, TESTIMONY]** | Falling rock explodes on landing; the tunnel stays open | First build left it as a permanent undiggable obstacle [ASSUMED]. Written sources are silent on post-fall behaviour; Dig Dug precedent shatters, and Daniel's memory says "exploded". Testimony beats assumption | Same as UX-32 — a primary source (manual scan, footage) showing persistent rocks |
+
 ## Open UX debts found during the build
 
 Named, not silently carried:

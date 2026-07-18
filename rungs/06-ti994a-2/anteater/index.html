@@ -490,11 +490,15 @@ function stepPlay(dt) {
   const A = game.ant;
   A.anim += dt;
 
-  /* input → want */
+  /* input → want. Release = stop at the next cell centre — the ant only
+     moves while the stick is held (Dig Dug lineage + Daniel's memory of
+     the original [TESTIMONY]; the first build coasted Pac-Man-style and
+     that was never a decision, just the shared mover's default). */
   if (held.left()) A.want = 'left';
   else if (held.right()) A.want = 'right';
   else if (held.up()) A.want = 'up';
   else if (held.down()) A.want = 'down';
+  else A.want = null;
 
   /* egg on fire edge (A-23: place, fuse, retreat) */
   const fr = held.fire();
@@ -515,7 +519,8 @@ function stepPlay(dt) {
   const spd = base * (aheadDigs ? ANT_DIG_MUL : 1);
   gridMove(A, spd * dt, canGoAnt,
     (c, r) => {
-      if (A.want && canGoAnt(c, r, A.want)) return A.want;
+      if (!A.want) return null;               // stick released — stop
+      if (canGoAnt(c, r, A.want)) return A.want;
       if (A.dir && canGoAnt(c, r, A.dir)) return A.dir;
       return null;
     },
@@ -612,11 +617,15 @@ function stepPlay(dt) {
       }
       const acl = cellOf(game.ant);
       if (acl.c === rk.c && acl.r === rr) { antDies(); }
-      /* landing: the cell below is not air */
+      /* landing: the cell below is not air → the rock SHATTERS and the
+         tunnel stays open (Dig Dug precedent + Daniel's memory of the
+         original [TESTIMONY]; first build left it as a permanent
+         obstacle, which was [ASSUMED] and got corrected in playtest) */
       const below = cell(rk.c, rr + 1);
       if (below !== AIR) {
-        rk.state = 'rest'; rk.r = rr;
-        game.grid[idx(rk.c, rk.r)] = ROCK_SET;     // solid, undiggable forever
+        rk.state = 'done'; rk.r = rr;
+        game.booms.push({ c: rk.c, r: rr, t: 300 });
+        Sound.boom();
       }
       if (game.state !== 'play') return;
     }

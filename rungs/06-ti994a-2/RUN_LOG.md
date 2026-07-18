@@ -52,3 +52,21 @@
   named (kills per egg) but not adopted post-hoc.
 - Full evidence tables in `tools/SIM_RESULTS.md`. Both games 12/12 CONFORMANT,
   docs flipped together, releases.json untouched.
+
+## 2026-07-19 — Daniel's first playtest (minutes after push) — two hits
+
+The feedback loop worked at chat speed. Both reports were **testimony about the
+original** (Daniel played it on his dad's machine), and both beat my [ASSUMED]
+choices — written sources are silent on each:
+
+- **Ant coasted perpetually** — never a decision, just the shared mover's default
+  slipping past the Suffering Ledger. FIXED per Daniel's call: stop at the next
+  cell centre on stick release (UX-32). Verified: frozen at a centre after
+  release, one full second sampled.
+- **Rocks sat forever after falling** — my [ASSUMED] obstacle behaviour; Daniel
+  remembers them exploding, Dig Dug precedent agrees. FIXED: shatter on landing,
+  tunnel stays open (UX-33). Verified: state `done`, socket and landing cells
+  both AIR, crush-during-fall still kills (+300), tunnel rule still 0 violations.
+
+Lesson repeated from rung 2's founding: the sources you can reach are not the
+only sources — **the family IS a primary source for this machine.**
