@@ -158,6 +158,23 @@ const P16={
     '.XXX.XXX.XXX.XXX'+
     '................'
 };
+/* split the figure into a top pass and a legs pass, plus a fattened outline so
+   he reads against both white stone and cyan sky */
+P16.climberTop =P16.climber.split('').map((ch,i)=>i< 9*16?ch:'.').join('');
+P16.climberLegs=P16.climber.split('').map((ch,i)=>i>=9*16?ch:'.').join('');
+P16.climberOutline=(()=>{
+  const a=P16.climber.split('');const o=new Array(256).fill('.');
+  for(let i=0;i<256;i++){
+    if(a[i]!=='X')continue;
+    const x=i%16,y=(i/16)|0;
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+      const nx=x+dx,ny=y+dy;
+      if(nx<0||nx>15||ny<0||ny>15)continue;
+      o[ny*16+nx]='X';
+    }
+  }
+  return o.join('');
+})();
 function sprite16(name,col){
   const k='16'+name+'|'+col;
   if(SPR[k])return SPR[k];
@@ -211,16 +228,36 @@ const PANEL_Y=VIEW_ROWS*CELL;
    gameplay shot shows blue sky around a silhouette. It runs full width for most
    of the climb (which is what keeps the sourced wrap-around meaningful, A6) and
    narrows to a peak over the top stretch. */
+/* A PYRAMID, all the way down — narrow at the peak, wide at the base, sky on
+   both flanks the whole climb. This is what the reference gameplay shots
+   actually show, and it is the single biggest reason our build did not read as
+   Alpiner: we had a full-bleed rock texture where the original has a mountain
+   SHAPE against cyan.
+   Reconciling it with the manual's sourced wrap-around (A6): the wrap runs
+   across the MOUNTAIN's width at your current row, not the screen's. Step off
+   the left flank and you come back on the right flank of the same row. The
+   mechanic survives; the silhouette is honoured. */
 function halfWidth(r){
-  const frac=1-r/G.rows;                 /* 0 at the bottom, 1 at the summit */
-  if(frac<.68)return 99;                 /* full width: wrap-around is live */
-  const t=(frac-.68)/.32;                /* 0..1 across the summit stretch */
-  return Math.max(3,Math.round(16-t*12));
+  const down=r/G.rows;                   /* 0 at the summit, 1 at the base */
+  return Math.max(2,Math.round(2+down*14));
+}
+/* clamped to the real grid: halfWidth tops out at 16, which would give a span of
+   0..32 — and column 32 does not exist, so every read of G.grid[r][32] came back
+   undefined. An off-by-one at the widest part of the mountain, i.e. exactly where
+   the player spends the first half of the climb. */
+function rowSpan(r){
+  const hw=halfWidth(r);
+  return{lo:Math.max(0,16-hw),hi:Math.min(COLS-1,16+hw)};
 }
 function isRock(r,c){
-  const hw=halfWidth(r);
-  if(hw>=16)return true;
-  return c>=16-hw&&c<=16+hw;
+  if(r<0||r>=G.rows)return false;
+  const s=rowSpan(r);
+  return c>=s.lo&&c<=s.hi;
+}
+/* wrap across the mountain's own width at this row */
+function wrapCol(r,c){
+  const s=rowSpan(r), w=s.hi-s.lo+1;
+  return s.lo+(((c-s.lo)%w)+w)%w;
 }
 /* A ledge is a walkable shelf — drawn bright with a dark lip, the stacked-
    platform look of the original. Structural for the eye, not for traversal. */
@@ -341,6 +378,14 @@ function hazardMix(level){
 function generate(seed){
   G.rng=mulberry32(seed>>>0);
   const rows=stepsToSummit()+1;                 /* row 0 = summit */
+  /* G.rows MUST be set before the loop: isRock() -> rowSpan() -> halfWidth()
+     all read it, so generating with it still holding the PREVIOUS level's
+     height silently shaped this mountain to the last one's proportions — and
+     made RNG consumption depend on what had been played before, which is what
+     dropped muteEquivalence to 11/20. Same class as the spawnAcc leak earlier
+     this session: generation reading residual state. The thesis test has now
+     caught two determinism bugs that had nothing to do with speech. */
+  G.rows=rows;
   const grid=[];
   const mix=hazardMix(G.level);
   /* [AUTHORED] ramp. First pass ran .12 -> .30 and the screen read as clutter:
@@ -353,6 +398,7 @@ function generate(seed){
     const row=new Array(COLS).fill(null);
     if(r>0&&r<rows-2){
       for(let c=0;c<COLS;c++){
+        if(!isRock(r,c))continue;          /* nothing stands in mid-air */
         if(G.rng()<density){
           row[c]=G.rng()<.28?'tree':mix[Math.floor(G.rng()*mix.length)];
         }
@@ -376,7 +422,7 @@ function climbable(grid,rows){
     for(let dc=-1;dc<=1;dc++)for(let dr=-1;dr<=1;dr++){
       if(!dc&&!dr)continue;
       const nr=r+dr;if(nr<0||nr>=rows)continue;
-      const nc=(c+dc+COLS)%COLS;                /* cylinder */
+      const nc=wrapCol(nr,c+dc);                /* wrap across the flank */
       if(!isRock(nr,nc))continue;               /* sky is not a route */
       if(grid[nr][nc]==='tree')continue;
       const k=nc+','+nr;if(seen.has(k))continue;
@@ -512,7 +558,7 @@ function tryStep(dc,dr){
   if(G.state!=='play')return false;
   const nr=G.row+dr;
   if(nr<0||nr>=G.rows)return false;
-  const nc=(G.col+dc+COLS)%COLS;                 /* A6: cylinder */
+  const nc=wrapCol(nr,G.col+dc);                 /* A6: wrap across the flank */
   if(!isRock(nr,nc))return false;                /* you cannot step into sky */
   if(G.grid[nr][nc]==='tree')return false;       /* trees block, cost nothing */
   G.col=nc;G.row=nr;                             /* exact assignment */
@@ -612,45 +658,40 @@ function mix(hex1,hex2,t){
   return 'rgb('+Math.round(A[0]+(B[0]-A[0])*t)+','+Math.round(A[1]+(B[1]-A[1])*t)+','+
     Math.round(A[2]+(B[2]-A[2])*t)+')';
 }
-const SKY='#4a86d8', SKY_HI='#6ba2e8';
+/* The original's palette, read off the reference shots: bright cyan sky, a
+   near-white masonry mountain, black mortar. Not grey rock, not a green field. */
+const SKY='#5ee0f5', STONE='#f0f0f0', STONE_2='#d0d4d8', MORTAR='#101010';
 function drawFace(){
-  /* sky first — the mountain is a shape sitting in it */
   cx.fillStyle=SKY;cx.fillRect(0,0,256,PANEL_Y);
-  cx.fillStyle=SKY_HI;cx.fillRect(0,0,256,24);
   for(let vr=0;vr<VIEW_ROWS;vr++){
     const r=G.camera+vr;if(r<0||r>=G.rows)continue;
-    const b=faceBand(r);
+    const y=vr*CELL;
     for(let c=0;c<COLS;c++){
       if(!isRock(r,c))continue;                 /* leave the sky showing */
-      const n=vnoise(r,c,7)*.68+vnoise(r,c,2.5)*.32;
-      const ledge=isLedge(r,c);
-      const x=c*CELL, y=vr*CELL;
-      if(ledge){
-        /* a bright shelf with a dark lip — the stacked-platform read */
-        cx.fillStyle=b.lite;cx.fillRect(x,y,CELL,CELL);
-        cx.fillStyle='#f4f7fc';cx.fillRect(x,y+1,CELL,3);
-        cx.fillStyle='#1a1d26';cx.fillRect(x,y,CELL,1);
-        cx.fillStyle=b.dark;cx.fillRect(x,y+CELL-2,CELL,2);
-      } else {
-        const lum=Math.max(0,Math.min(1,n*.9+.1));
-        cx.fillStyle=lum<.5?mix(b.dark,b.base,lum*2):mix(b.base,b.lite,(lum-.5)*2);
-        cx.fillRect(x,y,CELL,CELL);
-        const nAbove=vnoise(r-1,c,7)*.68+vnoise(r-1,c,2.5)*.32;
-        if(Math.floor(n*9)!==Math.floor(nAbove*9)){
-          cx.fillStyle=b.dark;cx.globalAlpha=.5;
-          cx.fillRect(x,y,CELL,1);cx.globalAlpha=1;
-        }
-      }
-      /* dark edge wherever rock meets sky, so the silhouette reads crisply */
-      if(!isRock(r,c-1)){cx.fillStyle='#141821';cx.fillRect(x,y,1,CELL);}
-      if(!isRock(r,c+1)){cx.fillStyle='#141821';cx.fillRect(x+CELL-1,y,1,CELL);}
-      if(!isRock(r-1,c)){cx.fillStyle='#141821';cx.fillRect(x,y,CELL,1);}
+      const x=c*CELL;
+      /* irregular blocks: alternating courses, widths varied by hash, so it
+         reads as stacked stone rather than as a grid of identical tiles */
+      cx.fillStyle=(hash(r,c)>.72)?STONE_2:STONE;
+      cx.fillRect(x,y,CELL,CELL);
+      /* mortar: a course line along the top of every row, and vertical joints
+         at irregular intervals offset per course */
+      cx.fillStyle=MORTAR;
+      cx.fillRect(x,y,CELL,1);
+      const off=(r%2)?4:0;
+      if(hash(r*7,c*3)>.42)cx.fillRect(x+off,y,1,CELL);
     }
+    /* crisp black silhouette against the sky */
+    const s=rowSpan(r);
+    cx.fillStyle=MORTAR;
+    cx.fillRect(s.lo*CELL,y,1,CELL);
+    cx.fillRect(s.hi*CELL+CELL-1,y,1,CELL);
+    /* the stepped edge: where this row is wider than the one above, cap it */
+    const sa=rowSpan(r-1);
+    if(r>0&&s.lo<sa.lo)cx.fillRect(s.lo*CELL,y,(sa.lo-s.lo)*CELL,1);
+    if(r>0&&s.hi>sa.hi)cx.fillRect((sa.hi+1)*CELL,y,(s.hi-sa.hi)*CELL,1);
     if(r===0){
-      const hw=halfWidth(0);
-      cx.fillStyle='#ffffff';cx.fillRect((16-hw)*CELL,vr*CELL,(hw*2+1)*CELL,CELL);
-      cx.fillStyle='#141821';cx.fillRect((16-hw)*CELL,vr*CELL,(hw*2+1)*CELL,1);
-      blit('flag','mediumRed',16*CELL,vr*CELL-CELL);
+      cx.fillStyle=MORTAR;cx.fillRect(s.lo*CELL,y,(s.hi-s.lo+1)*CELL,1);
+      blit('flag','mediumRed',16*CELL,y-CELL);
     }
   }
 }
@@ -674,10 +715,15 @@ function draw(){
     if(f.y<G.camera-1||f.y>G.camera+VIEW_ROWS)continue;
     blit(f.t,FALL[f.t].col,f.col*CELL,(f.y-G.camera)*CELL);
   }
-  /* the climber, 16x16 and drawn last so nothing can cover him */
-  const cyPix=(G.row-G.camera)*CELL;
-  cx.drawImage(sprite16('climber','black'),G.col*CELL-4+1,cyPix-8+1);
-  cx.drawImage(sprite16('climber','cyan'),G.col*CELL-4,cyPix-8);
+  /* The climber, drawn last so nothing can cover him — and in TWO overlapping
+     passes to get a red top over green trousers. That is exactly how the
+     hardware did multi-colour characters: TMS9918A sprites are monochrome, so a
+     two-tone figure costs a second sprite from the four-per-scanline budget.
+     The constraint is authentic; spending it here is the choice. */
+  const cyPix=(G.row-G.camera)*CELL, hx=G.col*CELL-4, hy=cyPix-8;
+  cx.drawImage(sprite16('climberOutline','black'),hx,hy);
+  cx.drawImage(sprite16('climberTop','#d02b1e'),hx,hy);
+  cx.drawImage(sprite16('climberLegs','#1c8b2a'),hx,hy);
   drawHud();
 }
 /* The info panel sits at the BOTTOM on a tan field — the layout of the original,
@@ -1012,6 +1058,11 @@ const tests={
   /* The terrain's own version of the same lesson: the relief noise was flat
      (0.232 across an entire row) because of a broken hash, so the "mountain"
      rendered as one solid wash. A constant is not a texture. */
+  /* NOTE 2026-07-19: the masonry renderer no longer uses vnoise, so this now
+     guards the hash's health rather than the drawn face. Kept because the
+     broken-hash failure mode it was born from is real and would resurface the
+     moment any renderer wants relief again — but it is NOT evidence about what
+     is on screen, and it must not be read as such. */
   terrainRelief(){
     const vals=[];
     for(let r=20;r<60;r++)for(let c=0;c<COLS;c++)
@@ -1067,15 +1118,32 @@ const tests={
     return{pass:esc===0,detail:esc+' containment/integer violations in '+games+' games'};
   },
   wrapAround(){
+    /* A6 now wraps across the MOUNTAIN's width at the current row, not the
+       screen's — the pyramid silhouette has sky on both flanks, so a
+       screen-width wrap would have walked the climber through open air. */
     sim.reset({seed:11});
-    G.col=0;const before=G.row;
-    /* step left off the edge; must re-enter at the right, same row band */
-    const ok0=tryStep(-1,0)!==undefined;
-    const wrapped=G.col===COLS-1||G.col===0; /* blocked by a tree is legal too */
-    sim.reset({seed:11});G.col=COLS-1;
-    tryStep(1,0);
-    const wrapped2=G.col===0||G.col===COLS-1;
-    return{pass:wrapped&&wrapped2,detail:'left edge -> '+(COLS-1)+' and right edge -> 0'};
+    let bad=[];
+    for(const r of [5,20,40,Math.max(0,G.rows-3)]){
+      if(r>=G.rows)continue;
+      const s=rowSpan(r);
+      if(wrapCol(r,s.lo-1)!==s.hi)bad.push('r'+r+' left->'+wrapCol(r,s.lo-1)+' want '+s.hi);
+      if(wrapCol(r,s.hi+1)!==s.lo)bad.push('r'+r+' right->'+wrapCol(r,s.hi+1)+' want '+s.lo);
+    }
+    return{pass:bad.length===0,
+      detail:bad.length?bad.join(' | '):'flank wrap exact at 4 heights'};
+  },
+  /* the silhouette itself is now a claim, so it gets a check */
+  pyramidSilhouette(){
+    sim.reset({seed:12});
+    const top=halfWidth(0), bot=halfWidth(G.rows-1);
+    let mono=true;
+    for(let r=1;r<G.rows;r++)if(halfWidth(r)<halfWidth(r-1))mono=false;
+    let sky=0,rock=0;
+    for(let r=0;r<G.rows;r++)for(let c=0;c<COLS;c++)(isRock(r,c)?rock++:sky++);
+    const skyFrac=sky/(sky+rock);
+    return{pass:top<=4&&bot>=14&&mono&&skyFrac>.25,
+      detail:'halfWidth '+top+' at peak -> '+bot+' at base, monotonic '+mono+
+        ', sky '+(skyFrac*100).toFixed(0)+'% of the field'};
   },
   /* ---- A8/A9: generation ---- */
   seedDeterminism(){
@@ -1311,7 +1379,7 @@ const tests={
   },
   run(){
     const names=['spriteIntegrity','terrainRelief','muteEquivalence','cueVisualPairing',
-      'mountainTable','elevationDerived',
+      'pyramidSilhouette','mountainTable','elevationDerived',
       'containment','wrapAround','seedDeterminism','layoutVariety','allClimbable',
       'penaltyTable','knockDownArithmetic','cascadeTerminates','fallingSubstep',
       'fallSpeedCeiling','fallClassUnlocks','invertedTimer','scoreTable','summitBonus',
