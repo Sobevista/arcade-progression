@@ -31,9 +31,11 @@ Follow `RESUME.md`.
 | 5 | **TI-99/4A: Hunt the Wumpus + Parsec** | 1980 / 1982 | the homage machine itself — deduction as a genre (Wumpus) and the ladder's first scrolling world, fuel, heat, speech (Parsec) | ✅ **PLAY** — [`rungs/05-ti994a/wumpus/`](rungs/05-ti994a/wumpus/) · [`rungs/05-ti994a/parsec/`](rungs/05-ti994a/parsec/) · [wumpus live](https://sobevista.github.io/arcade-progression/rungs/05-ti994a/wumpus/) · [parsec live](https://sobevista.github.io/arcade-progression/rungs/05-ti994a/parsec/) |
 | 6 | **TI-99/4A part II: Munch Man + Anteater** | 1982 / 1983 | law and distribution as constraints — the lawsuit-forced chain inversion (Munch Man) and player-dug tunnels the enemies share, plus a weapon aimed with time (Anteater) | ✅ **PLAY** — [`rungs/06-ti994a-2/munchman/`](rungs/06-ti994a-2/munchman/) · [`rungs/06-ti994a-2/anteater/`](rungs/06-ti994a-2/anteater/) · [munchman live](https://sobevista.github.io/arcade-progression/rungs/06-ti994a-2/munchman/) · [anteater live](https://sobevista.github.io/arcade-progression/rungs/06-ti994a-2/anteater/) |
 | 7 | **Deliverance** (NES-class) | 1985 tech | the scrolling platformer re-derived — subpixel physics transcribed from the SMB disassembly, forward-only camera, object-stream levels — retold as an Exodus story (all-original expression, UX-34) | ✅ **PLAY** — [`rungs/07-deliverance/`](rungs/07-deliverance/) · [live](https://sobevista.github.io/arcade-progression/rungs/07-deliverance/) |
+| 8 | **TI-99/4A part III: Alpiner** | 1982 | six real peaks by ascending elevation, 46 m a step, a wrap-around mountain — and a clock that runs **only while you stand still**. The rung that complicated its own earlier finding: an optional peripheral forces its channel to be redundant, so the accessory sells personality, not advantage | ✅ **PLAY** — [`rungs/08-ti994a-3/alpiner/`](rungs/08-ti994a-3/alpiner/) · [live](https://sobevista.github.io/arcade-progression/rungs/08-ti994a-3/alpiner/) |
 
 Rungs are numbered by build order, not strictly by year — Breakout is a backfill, built
-third because it is the causal link between Pong and Space Invaders.
+third because it is the causal link between Pong and Space Invaders, and rung 8 returns
+to the 1982 TI-99/4A after the NES because Daniel's brother picked the game.
 
 All playable games carry: a high score table with initials, a swivel stick for
 touch, synthesised audio, and the TI-99/4A palette. The rung-5 and rung-6 games

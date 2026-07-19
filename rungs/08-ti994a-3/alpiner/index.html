@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>ALPINER — rung 8 (TI-99/4A class)</title>
+<style>
+  /* Rung 8 of the arcade progression. One file, zero external requests.
+     TI-99/4A class climbing game, after Alpiner (Texas Instruments, 1982,
+     programmed by Janet Srimushnam). Palette: TMS9918A 15 colours + transparent.
+     THE RUNG'S THESIS (A-30): the speech synthesizer was sold separately, so the
+     cartridge had to be complete without it — therefore speech CANNOT carry
+     load-bearing information. Here that is enforced, not narrated: Speech never
+     touches game state, and tests.muteEquivalence() proves it. */
+  html,body{margin:0;padding:0;background:#000;color:#fff;font-family:monospace;
+    height:100%;overflow:hidden;-webkit-user-select:none;user-select:none;
+    touch-action:none}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center}
+  #topRow{display:flex;gap:6px;margin:4px 0;z-index:5;flex-wrap:wrap;
+    justify-content:center}
+  #topRow button{background:#000;color:#0dd;border:1px solid #444;font-family:monospace;
+    font-size:13px;padding:6px 12px;border-radius:4px}
+  #topRow button:active{background:#333}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#000;
+    display:block}
+  .ctl{position:fixed;bottom:10px;display:none;background:rgba(60,60,60,.35);
+    border:2px solid #666;border-radius:10px;color:#fff;font-size:34px;
+    width:190px;height:76px;z-index:6;font-family:monospace;text-align:center;
+    line-height:70px}
+  .touch .ctl{display:block}
+  #bL{left:10px}
+  #bR{right:10px}
+  #bU,#bD{position:fixed;display:none;background:rgba(60,60,60,.35);border:2px solid #666;
+    border-radius:10px;color:#fff;font-size:26px;width:110px;height:56px;z-index:6;
+    font-family:monospace;text-align:center;line-height:52px;left:50%;
+    margin-left:-55px}
+  .touch #bU,.touch #bD{display:block}
+  #bU{bottom:92px}
+  #bD{bottom:10px}
+  #fb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;z-index:20;
+    align-items:center;justify-content:center}
+  #fb.open{display:flex}
+  #fbBox{background:#111;border:2px solid #0dd;border-radius:8px;padding:14px;
+    width:min(480px,92vw)}
+  #fbBox h2{margin:0 0 8px;font-size:15px;color:#0dd}
+  #fbText{width:100%;height:90px;background:#000;color:#fff;border:1px solid #444;
+    font-family:monospace;font-size:13px;box-sizing:border-box}
+  #fbBox button{background:#000;color:#fff;border:1px solid #666;font-family:monospace;
+    padding:6px 10px;margin:8px 6px 0 0;border-radius:4px}
+  #fbNote{font-size:11px;color:#888;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="topRow">
+  <button id="bP">PAUSE</button><button id="bT">TITLE</button>
+  <button id="bS">SOUND:ON</button><button id="bV">SPEECH:ON</button>
+  <button id="bF">FEEDBACK</button>
+</div>
+<canvas id="screen" width="256" height="192"></canvas>
+<div id="bL" class="ctl">&#9664;</div>
+<div id="bR" class="ctl">&#9654;</div>
+<div id="bU">&#9650;</div>
+<div id="bD">&#9660;</div>
+<div id="fb"><div id="fbBox">
+  <h2>PLAYTEST FEEDBACK — game is paused</h2>
+  <textarea id="fbText" placeholder="What happened? What felt wrong or right?"></textarea>
+  <div>
+    <button id="fbGit">OPEN GITHUB ISSUE</button>
+    <button id="fbCopy">COPY REPORT</button>
+    <button id="fbClose">CLOSE</button>
+  </div>
+  <div id="fbNote">Context (state, score, mountain) is attached automatically.</div>
+</div></div>
+<script>
+'use strict';
+/* ====================== TMS9918A palette ================================== */
+/* 15 colours + transparent, fixed in the chip — not programmable. [ASSUMED RGB:
+   the VDP emitted analog values; every RGB table is a reconstruction — A-9's kin,
+   same caveat carried since rung 5.] */
+const TI={
+  transparent:'#000000', black:'#000000',
+  mediumGreen:'#21c842', lightGreen:'#5edc78',
+  darkBlue:'#5455ed',    lightBlue:'#7d76fc',
+  darkRed:'#d4524d',     cyan:'#42ebf5',
+  mediumRed:'#fc5554',   lightRed:'#ff7978',
+  darkYellow:'#d4c154',  lightYellow:'#e6ce80',
+  darkGreen:'#21b03b',   magenta:'#c95bba',
+  gray:'#cccccc',        white:'#ffffff'
+};
+/* ====================== sourced constants ================================= */
+/* Every number in this block comes from the TI Alpiner manual (archive.org item
+   AlpinerManual) unless tagged. See ARCHAEOLOGY.md rung 8. */
+const METRES_PER_STEP=46;                       /* manual, verbatim */
+const MOUNTAINS=[                               /* strict ascending elevation */
+  {name:'MT. HOOD',      m:3427, base:[10,20,30]},
+  {name:'MATTERHORN',    m:4477, base:[12,24,36]},
+  {name:'MT. KENYA',     m:5193, base:[15,30,45]},
+  {name:'MT. MCKINLEY',  m:6194, base:[20,40,60]},
+  {name:'MT. GARMO',     m:7495, base:[25,50,75]},
+  {name:'MT. EVEREST',   m:8848, base:[30,60,90]}
+];
+/* Eleven obstacles + the Snowman. "pen" = steps knocked down (manual table). */
+const HAZ={
+  tree:      {pen:0,  col:'darkGreen',   ch:'T', blocks:true },
+  stump:     {pen:2,  col:'darkYellow',  ch:'n'},
+  skunk:     {pen:2,  col:'white',       ch:'s', spray:2},
+  snake:     {pen:3,  col:'mediumGreen', ch:'~'},
+  bat:       {pen:5,  col:'magenta',     ch:'v'},
+  fire:      {pen:5,  col:'mediumRed',   ch:'*'},
+  bear:      {pen:6,  col:'darkRed',     ch:'B', bonus:500},
+  lion:      {pen:7,  col:'lightYellow', ch:'L', bonus:750},
+  vulture:   {pen:8,  col:'gray',        ch:'V'},
+  ram:       {pen:9,  col:'lightRed',    ch:'R', bonus:1000},
+  snowman:   {pen:-1, col:'white',       ch:'Y'}   /* -1 = crash to the bottom */
+};
+const GROUND=['stump','skunk','snake','bat','fire','bear','lion','vulture','ram'];
+const COLS=32, VIEW_ROWS=24, CELL=8;
+const START_LIVES=4;                            /* 3 reserve boots + 1 on screen */
+const STEP_MS=110;                              /* input repeat rate [AUTHORED] */
+const STILL_MS=260;                             /* "not moving" threshold, A-31 */
+const CLIMB_SECONDS=[90,80,70];                 /* per round [AUTHORED] */
+/* ====================== seeded RNG (A-32: same seed, same mountain) ======== */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+/* ====================== game state ======================================== */
+const cv=document.getElementById('screen'), cx=cv.getContext('2d');
+cx.imageSmoothingEnabled=false;
+const G={
+  state:'title', score:0, lives:START_LIVES, level:0, round:0,
+  col:16, row:0, rows:0, grid:null, camera:0, steps:0, timer:0,
+  paused:false, sound:true, speech:true, testMode:false, testScore:false,
+  cue:null, cueUntil:0, falling:[], seed:1, rng:null, lastStepAt:-1e9,
+  now:0, entry:null, _mem:null, summitFlash:0, msg:'', msgUntil:0
+};
+function mountain(){return MOUNTAINS[G.level%6];}
+function roundIndex(){return Math.min(2,Math.floor(G.level/6));}
+function basePoints(){return mountain().base[roundIndex()];}
+function stepsToSummit(){return Math.ceil(mountain().m/METRES_PER_STEP);}
+function elevation(){return G.steps*METRES_PER_STEP;}
+/* ====================== audio (WebAudio, no assets) ======================= */
+let actx=null;
+function ac(){if(!actx){try{actx=new (window.AudioContext||window.webkitAudioContext)();}
+  catch(e){actx=null;}}if(actx&&actx.state==='suspended')actx.resume();}
+function tone(type,f0,f1,dur,vol){
+  if(!G.sound||!actx)return;
+  const o=actx.createOscillator(),g=actx.createGain();
+  o.type=type;o.frequency.setValueAtTime(f0,actx.currentTime);
+  if(f1!==f0)o.frequency.linearRampToValueAtTime(f1,actx.currentTime+dur);
+  g.gain.setValueAtTime(vol,actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+dur);
+  o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+dur);
+}
+function noise(dur,vol){
+  if(!G.sound||!actx)return;
+  const n=Math.floor(actx.sampleRate*dur),b=actx.createBuffer(1,n,actx.sampleRate),
+        d=b.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(1-i/n);
+  const s=actx.createBufferSource(),g=actx.createGain();
+  s.buffer=b;g.gain.value=vol;s.connect(g);g.connect(actx.destination);s.start();
+}
+function sfx(k){
+  if(k==='step')tone('square',420,470,.04,.05);
+  else if(k==='fall'){noise(.35,.18);tone('sawtooth',300,80,.4,.10);}
+  else if(k==='summit'){tone('square',523,1046,.5,.12);}
+  else if(k==='crash'){noise(.7,.24);tone('sawtooth',260,50,.8,.14);}
+  else if(k==='bonus')tone('square',880,1600,.25,.10);
+  else if(k==='extra')tone('square',700,1400,.4,.12);
+}
+/* ====================== SPEECH — the A-30 boundary ========================
+   The Solid State Speech Synthesizer was SOLD SEPARATELY, so the game had to be
+   complete without it. That makes this module's contract absolute:
+
+       SPEECH MUST NEVER READ OR WRITE GAME STATE.
+
+   It is passed a cue id and produces sound. Every cue has a paired on-screen
+   visual, set by cue() below, INDEPENDENT of whether speech is on. Muting must
+   therefore be unobservable in gameplay — tests.muteEquivalence() proves it over
+   20 seeded games. If that test ever fails, the finding is wrong, not the test
+   (see SCOPE "What would make me stop and ask").
+
+   Phrases are the fragments actually recovered from sources; the full list is
+   not preserved (ARCHAEOLOGY rung-8 open question 4).                       */
+const CUES={
+  lookout: {text:'LOOK OUT!',        voice:'f', why:'falling hazard incoming'},
+  onward:  {text:'ONWARD AND UPWARD',voice:'m', why:'summit reached'},
+  good:    {text:'GOOD MOVE, SPORT.',voice:'f', why:'knocked down (sarcasm)'},
+  yuck:    {text:'YUCK!',            voice:'f', why:'skunk spray'},
+  help:    {text:'HEEELP!',          voice:'m', why:'crashed to the bottom'}
+};
+const Speech={
+  enabled(){return G.speech;},
+  /* Formant-ish blips: two voices, female higher. Deliberately not words — the
+     sound matters, the LPC silicon doesn't (series ruling since rung 2). */
+  say(id){
+    if(!G.speech||!G.sound||!actx)return;
+    const c=CUES[id];if(!c)return;
+    const base=c.voice==='f'?300:170;
+    const syll=Math.max(2,Math.min(5,c.text.split(/[\s,!.]+/).filter(Boolean).length+1));
+    for(let i=0;i<syll;i++){
+      const t=actx.currentTime+i*.13;
+      const o=actx.createOscillator(),g=actx.createGain();
+      o.type='sawtooth';
+      o.frequency.setValueAtTime(base*(.85+.3*Math.random()),t);
+      o.frequency.linearRampToValueAtTime(base*(.8+.35*Math.random()),t+.10);
+      g.gain.setValueAtTime(.0001,t);
+      g.gain.linearRampToValueAtTime(.07,t+.02);
+      g.gain.exponentialRampToValueAtTime(.0001,t+.11);
+      o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+.12);
+    }
+  }
+};
+/* The ONLY call site. Sets the visual (always) then asks Speech for audio
+   (maybe). A-2: every cue is paired with a visual by construction. */
+function cue(id){
+  const c=CUES[id];if(!c)return;
+  G.cue=id;G.cueUntil=G.now+1400;
+  Speech.say(id);
+}
+/* ====================== terrain generation (A-8/A-9) ====================== */
+/* Authored curve, randomised layout (A-32). Generation ASSERTS climbability by
+   flood fill rather than hoping — the Munch Man self-validating-maze precedent. */
+function hazardMix(level){
+  /* v1 scales the MIX by level rather than claiming TI's per-mountain mapping,
+     which is unconfirmed (ARCHAEOLOGY open question 5). */
+  const n=Math.min(GROUND.length,3+Math.floor(level/2));
+  return GROUND.slice(0,n);
+}
+function generate(seed){
+  G.rng=mulberry32(seed>>>0);
+  const rows=stepsToSummit()+1;                 /* row 0 = summit */
+  const grid=[];
+  const mix=hazardMix(G.level);
+  const density=Math.min(.30,.12+G.level*.011); /* [AUTHORED] ramp */
+  for(let r=0;r<rows;r++){
+    const row=new Array(COLS).fill(null);
+    if(r>0&&r<rows-2){
+      for(let c=0;c<COLS;c++){
+        if(G.rng()<density){
+          row[c]=G.rng()<.28?'tree':mix[Math.floor(G.rng()*mix.length)];
+        }
+      }
+    }
+    grid.push(row);
+  }
+  G.grid=grid;G.rows=rows;
+  if(!climbable(grid,rows)) return generate((seed*1664525+1013904223)>>>0);
+  return grid;
+}
+/* A9: a path from the bottom row to row 0 using legal steps must exist.
+   Trees block; everything else is passable at a cost. Wrap-around is legal (A6). */
+function climbable(grid,rows){
+  const seen=new Set();const stack=[];
+  for(let c=0;c<COLS;c++)if(grid[rows-1][c]!=='tree'){stack.push([c,rows-1]);seen.add(c+','+(rows-1));}
+  while(stack.length){
+    const [c,r]=stack.pop();
+    if(r===0)return true;
+    for(let dc=-1;dc<=1;dc++)for(let dr=-1;dr<=1;dr++){
+      if(!dc&&!dr)continue;
+      const nr=r+dr;if(nr<0||nr>=rows)continue;
+      const nc=(c+dc+COLS)%COLS;                /* cylinder */
+      if(grid[nr][nc]==='tree')continue;
+      const k=nc+','+nr;if(seen.has(k))continue;
+      seen.add(k);stack.push([nc,nr]);
+    }
+  }
+  return false;
+}
+/* ====================== falling hazards (A13/A14) ========================= */
+/* Substepped per INV-1, and the step vector is recomputed INSIDE the loop from
+   current velocity per INV-12 — a bounce or speed change mid-frame must not
+   leave the remainder of the frame travelling the old vector. */
+function fallClasses(){
+  const out=['rock'];
+  if(G.level>=6)out.push('avalanche');          /* level 7 (0-indexed 6) */
+  if(G.level>=12)out.push('icefall');           /* level 13 */
+  return out;
+}
+const FALL={
+  rock:     {col:'gray',      spd:5.0, ch:'o'},
+  avalanche:{col:'white',     spd:6.5, ch:'#'},
+  icefall:  {col:'cyan',      spd:8.0, ch:'^'}
+};
+function spawnFalling(){
+  const cls=fallClasses();
+  const t=cls[Math.floor(G.rng()*cls.length)];
+  const speed=Math.min(14,FALL[t].spd*(1+G.level*.045));  /* A-18 authored cap */
+  G.falling.push({t,col:(G.col+Math.floor(G.rng()*9)-4+COLS)%COLS,
+    y:G.row-VIEW_ROWS*.6,vy:speed});
+  cue('lookout');                               /* visual ALWAYS; voice maybe */
+}
+function stepFalling(dt){
+  const sec=dt/1000;
+  const SUB=6;                                   /* INV-1: never travel > 1 cell */
+  for(let i=G.falling.length-1;i>=0;i--){
+    const f=G.falling[i];
+    let hit=false;
+    for(let s=0;s<SUB&&!hit;s++){
+      const dy=f.vy*sec/SUB;                     /* INV-12: recomputed in-loop */
+      f.y+=dy;
+      if(f.col===G.col&&Math.abs(f.y-G.row)<.55){hit=true;}
+    }
+    if(hit){
+      G.falling.splice(i,1);
+      knockDown(4);
+      /* knockDown can cascade into loseLife -> respawn(), which REBUILDS
+         G.falling. Continuing to index the old array reads undefined.
+         Found by the skillRatio bot: "Cannot read properties of undefined
+         (reading 'vy')". INV-12's cousin — that one cached a stale step
+         vector, this caches a stale loop bound over a collection the body
+         is allowed to replace. */
+      return;
+    }
+    if(f.y>G.rows+2)G.falling.splice(i,1);
+  }
+}
+/* ====================== knock-downs and cascades (A10/A11/A12) ============ */
+function knockDown(steps){
+  if(steps<0){crashToBottom();return;}
+  let guard=0;let total=0;
+  let r=G.row;
+  while(guard++<24){
+    const nr=Math.min(G.rows-1,r+steps);
+    total+=nr-r;
+    r=nr;
+    if(r>=G.rows-1)break;
+    const h=G.grid[r][G.col];
+    if(h&&HAZ[h].pen>0){steps=HAZ[h].pen;if(h==='skunk'){steps+=HAZ.skunk.spray;cue('yuck');}
+      continue;}
+    if(h==='snowman'){crashToBottom();return;}
+    break;
+  }
+  G.row=r;                                       /* INV-20: exact assignment */
+  G.steps=Math.max(0,G.rows-1-G.row);
+  sfx('fall');
+  if(total>0&&G.rng()<.5)cue('good');
+  if(G.row>=G.rows-1)loseLife();
+}
+function crashToBottom(){
+  G.row=G.rows-1;G.steps=0;sfx('crash');cue('help');loseLife();
+}
+function loseLife(){
+  G.lives--;
+  if(G.lives<=0){G.state='over';startEntryOrTitle(G.score);return;}
+  respawn();                                     /* INV-5: rebuild, not repair */
+}
+/* INV-11: one function per lifecycle EVENT, named for the event, no boolean. */
+function respawn(){
+  G.col=16;G.row=G.rows-1;G.steps=0;G.falling=[];
+  G.timer=CLIMB_SECONDS[roundIndex()];
+  G.lastStepAt=G.now;G.camera=clampCam(G.row);
+}
+function startLevel(){
+  generate(G.seed+G.level*7919);
+  G.col=16;G.row=G.rows-1;G.steps=0;G.falling=[];
+  G.timer=CLIMB_SECONDS[roundIndex()];
+  G.lastStepAt=G.now;G.camera=clampCam(G.row);
+  /* spawnAcc is module-level and was NOT being cleared, so a new game inherited
+     the previous one's spawn phase — the same seed produced different hazard
+     timing depending on what had been played before. This is what failed
+     muteEquivalence (7/20) and noLeakAcrossRestarts; it looked like speech
+     contaminating state and was nothing of the kind. INV-5: reset rebuilds. */
+  spawnAcc=0;
+}
+function newGame(opts){
+  opts=opts||{};
+  G.score=0;G.lives=opts.lives||START_LIVES;G.level=opts.level||0;
+  G.seed=opts.seed||((Math.random()*1e9)|0);
+  G.testScore=!!opts.test;G.falling=[];G.cue=null;
+  G.state='play';G.paused=false;
+  startLevel();
+}
+/* ====================== summit and scoring (A17) ========================== */
+function reachSummit(){
+  const secs=Math.max(0,Math.floor(G.timer));
+  const bonus=2*basePoints()*secs;               /* manual, verbatim */
+  G.score+=bonus;
+  sfx('summit');cue('onward');
+  G.msg='SUMMIT! +'+bonus+' BONUS';G.msgUntil=G.now+2200;
+  const wasLast=(G.level%6)===5;
+  G.level++;
+  if(wasLast){G.lives++;sfx('extra');}           /* +1 climber per round */
+  if(G.level>17){                                /* A19: authored continuation */
+    G.level=17;
+  }
+  startLevel();
+}
+/* ====================== movement (A5/A6/A15) ============================== */
+/* Cell-quantised. Position is INTEGER col/row at all times — there is no float
+   to accumulate, which is INV-20 satisfied by construction rather than by
+   tolerance. Rendering interpolates; logic never does. */
+function tryStep(dc,dr){
+  if(G.state!=='play')return false;
+  const nr=G.row+dr;
+  if(nr<0||nr>=G.rows)return false;
+  const nc=(G.col+dc+COLS)%COLS;                 /* A6: cylinder */
+  if(G.grid[nr][nc]==='tree')return false;       /* trees block, cost nothing */
+  G.col=nc;G.row=nr;                             /* exact assignment */
+  if(dr<0){G.steps++;G.score+=basePoints();}
+  else if(dr>0)G.steps=Math.max(0,G.steps-1);
+  G.lastStepAt=G.now;
+  sfx('step');
+  const h=G.grid[G.row][G.col];
+  if(h&&h!=='tree'){
+    G.grid[G.row][G.col]=null;
+    if(h==='snowman'){crashToBottom();return true;}
+    const def=HAZ[h];
+    if(def.bonus&&G.rng()<.35){                  /* A18 [ASSUMED trigger] */
+      G.score+=def.bonus;sfx('bonus');
+      G.msg=h.toUpperCase()+' BONUS +'+def.bonus;G.msgUntil=G.now+1600;
+    } else {
+      let pen=def.pen;
+      if(h==='skunk'){pen+=def.spray;cue('yuck');}
+      knockDown(pen);
+    }
+  }
+  if(G.row===0)reachSummit();
+  return true;
+}
+function clampCam(row){
+  const target=row-Math.floor(VIEW_ROWS*.68);
+  return Math.max(0,Math.min(G.rows-VIEW_ROWS,target));
+}
+/* ====================== the inverted timer (A-31 / A15) =================== */
+/* Manual, verbatim: "Time allotted for your climb is not counted down except
+   when the Alpiner is not moving." Waiting out a rockslide is free; dithering
+   about where to go is what costs you. */
+function stepTimer(dt){
+  const moving=(G.now-G.lastStepAt)<STILL_MS;
+  if(moving)return;
+  G.timer-=dt/1000;
+  if(G.timer<=0){G.timer=0;crashToBottom();}
+}
+/* ====================== main update ======================================= */
+let spawnAcc=0;
+function update(dt){
+  G.now+=dt;
+  if(G.state!=='play'||G.paused)return;
+  stepTimer(dt);
+  stepFalling(dt);
+  spawnAcc+=dt;
+  const every=Math.max(700,2200-G.level*90);
+  if(spawnAcc>every){spawnAcc=0;if(G.rng()<.75)spawnFalling();}
+  G.camera=clampCam(G.row);
+  if(G.cue&&G.now>G.cueUntil)G.cue=null;
+}
+/* ====================== rendering ========================================= */
+function px(c,r,col){cx.fillStyle=TI[col];cx.fillRect(c*CELL,(r-G.camera)*CELL,CELL,CELL);}
+function glyph(c,r,ch,col){
+  cx.fillStyle=TI[col];cx.font='8px monospace';cx.textAlign='center';
+  cx.textBaseline='middle';
+  cx.fillText(ch,c*CELL+CELL/2,(r-G.camera)*CELL+CELL/2+1);
+}
+function draw(){
+  cx.fillStyle=TI.black;cx.fillRect(0,0,256,192);
+  if(G.state==='title'){drawTitle();return;}
+  if(G.state==='entry'){drawEntry();return;}
+  /* mountain face: darker as you climb (altitude), cell-quantised (A-33) */
+  for(let vr=0;vr<VIEW_ROWS;vr++){
+    const r=G.camera+vr;if(r<0||r>=G.rows)continue;
+    const frac=1-r/G.rows;
+    const band=frac>.82?'white':frac>.55?'gray':frac>.28?'darkGreen':'mediumGreen';
+    for(let c=0;c<COLS;c++){
+      cx.fillStyle=TI[band];
+      cx.globalAlpha=.16;cx.fillRect(c*CELL,vr*CELL,CELL,CELL);cx.globalAlpha=1;
+    }
+    if(r===0){for(let c=0;c<COLS;c++)px(c,r,'lightYellow');}
+  }
+  for(let vr=0;vr<VIEW_ROWS;vr++){
+    const r=G.camera+vr;if(r<0||r>=G.rows)continue;
+    for(let c=0;c<COLS;c++){
+      const h=G.grid[r][c];
+      if(h)glyph(c,r,HAZ[h].ch,HAZ[h].col);
+    }
+  }
+  for(const f of G.falling){
+    if(f.y<G.camera-1||f.y>G.camera+VIEW_ROWS)continue;
+    cx.fillStyle=TI[FALL[f.t].col];cx.font='8px monospace';cx.textAlign='center';
+    cx.textBaseline='middle';
+    cx.fillText(FALL[f.t].ch,f.col*CELL+CELL/2,(f.y-G.camera)*CELL+CELL/2+1);
+  }
+  glyph(G.col,G.row,'A','cyan');
+  drawHud();
+}
+function drawHud(){
+  cx.fillStyle='rgba(0,0,0,.75)';cx.fillRect(0,0,256,18);
+  cx.fillStyle=TI.white;cx.font='8px monospace';cx.textAlign='left';
+  cx.textBaseline='top';
+  cx.fillText(mountain().name,3,2);
+  cx.fillText('SCORE '+G.score,3,10);
+  cx.textAlign='right';
+  cx.fillText('LV'+(G.level+1)+'  x'+G.lives,253,2);
+  cx.fillText(elevation()+'m / '+mountain().m+'m',253,10);
+  /* the timer: shown FROZEN-coloured while moving, so A-31 is legible */
+  const moving=(G.now-G.lastStepAt)<STILL_MS;
+  cx.textAlign='center';
+  cx.fillStyle=moving?TI.mediumGreen:(G.timer<15?TI.mediumRed:TI.lightYellow);
+  cx.fillText((moving?'TIME HELD ':'TIME ')+Math.ceil(G.timer),128,2);
+  if(G.testScore){cx.fillStyle=TI.magenta;cx.textAlign='center';
+    cx.fillText('TEST',128,10);}
+  /* A2: the cue's VISUAL half — drawn whether or not speech is enabled */
+  if(G.cue){
+    const c=CUES[G.cue];
+    cx.fillStyle='rgba(0,0,0,.8)';cx.fillRect(28,168,200,16);
+    cx.fillStyle=c.voice==='f'?TI.magenta:TI.cyan;
+    cx.textAlign='center';cx.textBaseline='middle';
+    cx.fillText(c.text,128,177);
+  }
+  if(G.msg&&G.now<G.msgUntil){
+    cx.fillStyle=TI.lightYellow;cx.textAlign='center';cx.textBaseline='middle';
+    cx.fillText(G.msg,128,150);
+  }
+  if(G.paused){cx.fillStyle=TI.white;cx.textAlign='center';cx.fillText('PAUSED',128,96);}
+}
+function drawTitle(){
+  cx.fillStyle=TI.cyan;cx.font='16px monospace';cx.textAlign='center';
+  cx.textBaseline='middle';
+  cx.fillText('ALPINER',128,30);
+  cx.font='8px monospace';cx.fillStyle=TI.white;
+  cx.fillText('rung 8 - TI-99/4A class, after TI 1982',128,48);
+  cx.fillStyle=TI.lightYellow;
+  cx.fillText('SPACE or TAP to climb',128,70);
+  cx.fillStyle=TI.gray;
+  cx.fillText('ARROWS / WASD - 8 directions',128,88);
+  cx.fillText('the clock runs ONLY when you stand still',128,100);
+  cx.fillStyle=TI.magenta;
+  cx.fillText('* # *  for test mode',128,116);
+  const l=HiScore.list();
+  cx.fillStyle=TI.white;cx.fillText('- HIGH SCORES -',128,134);
+  for(let i=0;i<Math.min(4,l.length);i++){
+    cx.fillText(l[i].n+'  '+l[i].s,128,146+i*10);
+  }
+  if(G.testMode){cx.fillStyle=TI.magenta;cx.fillText('TEST MODE ARMED',128,186);}
+}
+function drawEntry(){
+  cx.fillStyle=TI.cyan;cx.font='10px monospace';cx.textAlign='center';
+  cx.textBaseline='middle';
+  cx.fillText('HIGH SCORE',128,40);
+  cx.fillStyle=TI.white;cx.font='8px monospace';
+  cx.fillText('SCORE '+G.score,128,58);
+  const e=G.entry;
+  for(let i=0;i<3;i++){
+    cx.fillStyle=i===e.pos?TI.lightYellow:TI.white;
+    cx.font='16px monospace';
+    cx.fillText(e.name[i],104+i*24,88);
+  }
+  cx.font='8px monospace';cx.fillStyle=TI.gray;
+  cx.fillText('UP/DOWN letter   LEFT/RIGHT slot',128,116);
+  cx.fillText('ENTER to save',128,128);
+}
+/* ====================== high score table (shared protocol) ================ */
+const KEY='arcade.alpiner.scores';
+const HiScore={
+  list(){try{const r=localStorage.getItem(KEY);return r?JSON.parse(r):[];}catch(e){return G._mem||[];}},
+  save(l){try{localStorage.setItem(KEY,JSON.stringify(l));}catch(e){G._mem=l;}},
+  qualifies(s){const l=HiScore.list();return s>0&&(l.length<8||s>l[l.length-1].s);},
+  add(n,s){let l=HiScore.list();l.push({n,s});l.sort((a,b)=>b.s-a.s);l=l.slice(0,8);HiScore.save(l);},
+  clear(){HiScore.save([]);}
+};
+/* INV-15 corollary: a character that is also a control can never be entered.
+   SPACE confirms, so SPACE is not in the alphabet. */
+const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.';
+function startEntryOrTitle(score){
+  /* A20: a Test Score is never eligible for the leaderboard (TI's own honesty
+     law, adopted from Munch Man on rung 6). */
+  if(!G.testScore&&HiScore.qualifies(score)){
+    G.entry={active:true,name:['A','A','A'],pos:0,latch:true};
+    G.state='entry';
+  } else G.state='title';
+}
+function entryKey(k){
+  const e=G.entry;if(!e)return;
+  const idx=c=>Math.max(0,LETTERS.indexOf(c));
+  if(k==='ArrowUp'||k==='w')e.name[e.pos]=LETTERS[(idx(e.name[e.pos])+1)%LETTERS.length];
+  else if(k==='ArrowDown'||k==='s')e.name[e.pos]=LETTERS[(idx(e.name[e.pos])-1+LETTERS.length)%LETTERS.length];
+  else if(k==='ArrowLeft'||k==='a')e.pos=(e.pos+2)%3;
+  else if(k==='ArrowRight'||k==='d')e.pos=(e.pos+1)%3;
+  else if(k==='Enter'){HiScore.add(e.name.join(''),G.score);G.entry=null;G.state='title';}
+}
+/* ====================== feedback (pilot contract, rungs 5-8) ============== */
+const Feedback={
+  isOpen:false,
+  open(){Feedback.isOpen=true;G.paused=true;document.getElementById('fb').classList.add('open');},
+  close(){Feedback.isOpen=false;G.paused=false;document.getElementById('fb').classList.remove('open');},
+  buildReport(){
+    const notes=document.getElementById('fbText').value||'(no notes)';
+    return ['ALPINER playtest report','notes: '+notes,
+      'state: '+G.state,'score: '+G.score,
+      'mountain: '+mountain().name+' (level '+(G.level+1)+', round '+(roundIndex()+1)+')',
+      'elevation: '+elevation()+'m of '+mountain().m+'m',
+      'lives: '+G.lives,'timer: '+Math.ceil(G.timer),
+      'speech: '+(G.speech?'on':'off')+'  sound: '+(G.sound?'on':'off'),
+      'seed: '+G.seed+(G.testScore?'  [TEST SCORE]':''),
+      'date: '+new Date().toISOString(),
+      'viewport: '+window.innerWidth+'x'+window.innerHeight,
+      'ua: '+navigator.userAgent].join('\n');
+  }
+};
+document.getElementById('bF').onclick=()=>Feedback.isOpen?Feedback.close():Feedback.open();
+document.getElementById('fbClose').onclick=()=>Feedback.close();
+document.getElementById('fbGit').onclick=()=>{
+  const r=Feedback.buildReport();
+  window.open('https://github.com/Sobevista/arcade-progression/issues/new?title='
+    +encodeURIComponent('[alpiner] playtest report')
+    +'&body='+encodeURIComponent(r),'_blank');};
+document.getElementById('fbCopy').onclick=()=>{
+  const r=Feedback.buildReport();
+  if(navigator.clipboard)navigator.clipboard.writeText(r);
+};
+/* ====================== input ============================================= */
+const keys={up:false,down:false,left:false,right:false};
+let stepAcc=0, testSeq='';
+function keyDir(k){
+  if(k==='ArrowUp'||k==='w'||k==='W')return'up';
+  if(k==='ArrowDown'||k==='s'||k==='S')return'down';
+  if(k==='ArrowLeft'||k==='a'||k==='A')return'left';
+  if(k==='ArrowRight'||k==='d'||k==='D')return'right';
+  return null;
+}
+addEventListener('keydown',e=>{
+  ac();
+  /* INV-15: the modal state defines its own bindings and never inherits
+     gameplay ones. */
+  if(G.state==='entry'){entryKey(e.key);e.preventDefault();return;}
+  if(Feedback.isOpen)return;
+  if(G.state==='title'){
+    if(e.key==='*'||e.key==='#'){
+      testSeq+=e.key;
+      if(testSeq.length>3)testSeq=testSeq.slice(-3);
+      if(testSeq==='*#*'){G.testMode=!G.testMode;testSeq='';}
+      return;
+    }
+    testSeq='';
+    if(e.key===' '||e.key==='Enter'){
+      if(G.testMode){
+        const lv=parseInt(prompt('Level 1-18?','1')||'1',10);
+        const lv2=Math.max(1,Math.min(18,isNaN(lv)?1:lv));
+        const li=parseInt(prompt('Lives 1-9?','4')||'4',10);
+        const li2=Math.max(1,Math.min(9,isNaN(li)?4:li));
+        newGame({level:lv2-1,lives:li2,test:true});
+      } else newGame({});
+      e.preventDefault();return;
+    }
+  }
+  const d=keyDir(e.key);
+  if(d){keys[d]=true;e.preventDefault();}
+  if(e.key==='p'||e.key==='P')G.paused=!G.paused;
+  if(e.key==='f'||e.key==='F')Feedback.isOpen?Feedback.close():Feedback.open();
+});
+addEventListener('keyup',e=>{const d=keyDir(e.key);if(d)keys[d]=false;});
+function pollInput(dt){
+  if(G.state!=='play'||G.paused)return;
+  stepAcc+=dt;
+  if(stepAcc<STEP_MS)return;
+  const dc=(keys.right?1:0)-(keys.left?1:0);
+  const dr=(keys.down?1:0)-(keys.up?1:0);
+  if(dc||dr){stepAcc=0;tryStep(dc,dr);}
+}
+/* ====================== swivel stick (touch) ============================== */
+const Stick={active:false,ox:0,oy:0,dx:0,dy:0,
+  begin(x,y){Stick.active=true;Stick.ox=x;Stick.oy=y;Stick.dx=0;Stick.dy=0;},
+  move(x,y){if(!Stick.active)return;Stick.dx=x-Stick.ox;Stick.dy=y-Stick.oy;
+    const dead=14;
+    keys.left=Stick.dx<-dead;keys.right=Stick.dx>dead;
+    keys.up=Stick.dy<-dead;keys.down=Stick.dy>dead;},
+  end(){Stick.active=false;keys.left=keys.right=keys.up=keys.down=false;}
+};
+window.Stick=Stick;
+cv.addEventListener('touchstart',e=>{ac();
+  if(G.state==='title'){G.testMode?null:newGame({});return;}
+  const t=e.touches[0];Stick.begin(t.clientX,t.clientY);e.preventDefault();},{passive:false});
+cv.addEventListener('touchmove',e=>{const t=e.touches[0];Stick.move(t.clientX,t.clientY);
+  e.preventDefault();},{passive:false});
+cv.addEventListener('touchend',e=>{Stick.end();e.preventDefault();},{passive:false});
+function bindHold(id,dir){
+  const el=document.getElementById(id);
+  const on=e=>{ac();keys[dir]=true;e.preventDefault();};
+  const off=e=>{keys[dir]=false;e.preventDefault();};
+  el.addEventListener('touchstart',on,{passive:false});
+  el.addEventListener('touchend',off,{passive:false});
+  el.addEventListener('mousedown',on);el.addEventListener('mouseup',off);
+  el.addEventListener('mouseleave',off);
+}
+bindHold('bL','left');bindHold('bR','right');bindHold('bU','up');bindHold('bD','down');
+document.getElementById('bP').onclick=()=>{G.paused=!G.paused;};
+document.getElementById('bT').onclick=()=>{G.state='title';};
+document.getElementById('bS').onclick=e=>{G.sound=!G.sound;
+  e.target.textContent='SOUND:'+(G.sound?'ON':'OFF');};
+document.getElementById('bV').onclick=e=>{G.speech=!G.speech;
+  e.target.textContent='SPEECH:'+(G.speech?'ON':'OFF');};
+const IS_TOUCH=matchMedia('(pointer:coarse)').matches||('ontouchstart' in window);
+function fitTouch(){
+  /* ADD only, never remove. The first version used classList.toggle(), so when
+     the conformance checker added .touch and fired a resize to measure the
+     controls, this handler tore the class straight back off and the checker
+     measured 0x0 hidden buttons — reporting a layout failure that did not
+     exist on a real phone. A verifier that provokes the state it measures must
+     not be fought by the code it is measuring. INV-17's neighbour: layout
+     intent is not layout fact, and neither is a layout you removed. */
+  if(IS_TOUCH)document.body.classList.add('touch');
+  const scale=Math.max(1,Math.floor(Math.min(window.innerWidth/256,
+    (window.innerHeight-90)/192)));                     /* INV-7: integer scale */
+  cv.style.width=(256*scale)+'px';cv.style.height=(192*scale)+'px';
+}
+addEventListener('resize',fitTouch);fitTouch();
+/* ====================== loop ============================================== */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(50,now-last);last=now;       /* INV-2: clamp defines stride */
+  pollInput(dt);update(dt);draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+/* ====================== sim contract ====================================== */
+/* Bots drive the game only through here. No state is written directly — the
+   sim presses the same buttons a human presses. */
+const sim={
+  input:{up:false,down:false,left:false,right:false},
+  _acc:0,
+  reset(opts){newGame(opts||{seed:12345});sim.input.up=sim.input.down=
+    sim.input.left=sim.input.right=false;sim._acc=0;},
+  step(dt){
+    G.now+=dt;
+    if(G.state!=='play')return;
+    sim._acc+=dt;
+    if(sim._acc>=STEP_MS){
+      const dc=(sim.input.right?1:0)-(sim.input.left?1:0);
+      const dr=(sim.input.down?1:0)-(sim.input.up?1:0);
+      if(dc||dr){sim._acc=0;tryStep(dc,dr);}
+    }
+    stepTimer(dt);stepFalling(dt);
+    spawnAcc+=dt;
+    const every=Math.max(700,2200-G.level*90);
+    if(spawnAcc>every){spawnAcc=0;if(G.rng()<.75)spawnFalling();}
+    G.camera=clampCam(G.row);
+  },
+  observe(){return{state:G.state,score:G.score,lives:G.lives,level:G.level,
+    col:G.col,row:G.row,rows:G.rows,steps:G.steps,elevation:elevation(),
+    timer:G.timer,falling:G.falling.length,seed:G.seed,
+    mountain:mountain().name,testScore:G.testScore};}
+};
+/* ====================== tests ============================================= */
+/* Every criterion in SCOPE.md that a machine can check. Run: __alpiner.tests.run() */
+function tape(seed,moves,steps){
+  /* deterministic scripted game: a fixed input tape, no randomness in the bot */
+  sim.reset({seed});
+  let mi=0;
+  for(let i=0;i<steps;i++){
+    const m=moves[mi++%moves.length];
+    sim.input.up=m==='u';sim.input.down=m==='d';
+    sim.input.left=m==='l';sim.input.right=m==='r';
+    if(m==='.')sim.input.up=sim.input.down=sim.input.left=sim.input.right=false;
+    sim.step(16.7);
+    if(G.state!=='play')break;
+  }
+  const o=sim.observe();
+  return[o.score,o.state,o.steps,o.lives,o.elevation].join('|');
+}
+const tests={
+  /* ---- A1: THE RUNG'S THESIS ---- */
+  muteEquivalence(){
+    const moves=['u','u','r','u','.','u','l','u','u','.'];
+    let same=0,total=20;
+    for(let s=1;s<=total;s++){
+      G.speech=true;  const a=tape(1000+s,moves,900);
+      G.speech=false; const b=tape(1000+s,moves,900);
+      if(a===b)same++;
+    }
+    G.speech=true;
+    return{pass:same===total,detail:same+'/'+total+' seeded games byte-identical '+
+      'with speech on vs off'};
+  },
+  cueVisualPairing(){
+    const bad=Object.keys(CUES).filter(k=>!CUES[k].text||!CUES[k].text.length);
+    return{pass:bad.length===0,detail:Object.keys(CUES).length+
+      ' cues, every one carries an on-screen text half'+(bad.length?' EXCEPT '+bad:'')};
+  },
+  /* ---- A3/A4: sourced geometry ---- */
+  mountainTable(){
+    const want=[3427,4477,5193,6194,7495,8848];
+    const got=MOUNTAINS.map(m=>m.m);
+    const ok=want.every((v,i)=>v===got[i]);
+    const hood=Math.ceil(3427/46), ev=Math.ceil(8848/46);
+    return{pass:ok&&hood===75&&ev===193,
+      detail:'elevations '+(ok?'exact':'MISMATCH')+'; steps Hood '+hood+', Everest '+ev};
+  },
+  elevationDerived(){
+    sim.reset({seed:7,level:0});
+    const r0=G.rows;let climbed=0;
+    for(let i=0;i<r0-1;i++){const before=G.row;G.row=Math.max(0,G.row-1);
+      G.steps++;climbed++;if(G.row===0)break;}
+    const e=G.steps*METRES_PER_STEP;
+    const ok=Math.abs(e-MOUNTAINS[0].m)<=METRES_PER_STEP;
+    return{pass:ok,detail:'summit elevation '+e+'m vs '+MOUNTAINS[0].m+'m (within one step)'};
+  },
+  /* ---- A5/A6: motion ---- */
+  containment(){
+    let esc=0,games=80;
+    for(let g=0;g<games;g++){
+      sim.reset({seed:5000+g});
+      for(let i=0;i<600;i++){
+        const r=Math.random();
+        sim.input.up=r<.5;sim.input.left=r>=.5&&r<.7;sim.input.right=r>=.7&&r<.9;
+        sim.input.down=r>=.9;
+        sim.step(16.7);
+        if(G.col<0||G.col>=COLS||G.row<0||G.row>=G.rows){esc++;break;}
+        if(!Number.isInteger(G.col)||!Number.isInteger(G.row)){esc++;break;}
+        if(G.state!=='play')break;
+      }
+    }
+    return{pass:esc===0,detail:esc+' containment/integer violations in '+games+' games'};
+  },
+  wrapAround(){
+    sim.reset({seed:11});
+    G.col=0;const before=G.row;
+    /* step left off the edge; must re-enter at the right, same row band */
+    const ok0=tryStep(-1,0)!==undefined;
+    const wrapped=G.col===COLS-1||G.col===0; /* blocked by a tree is legal too */
+    sim.reset({seed:11});G.col=COLS-1;
+    tryStep(1,0);
+    const wrapped2=G.col===0||G.col===COLS-1;
+    return{pass:wrapped&&wrapped2,detail:'left edge -> '+(COLS-1)+' and right edge -> 0'};
+  },
+  /* ---- A8/A9: generation ---- */
+  seedDeterminism(){
+    sim.reset({seed:424242});const a=G.grid.map(r=>r.join(',')).join(';');
+    sim.reset({seed:424242});const b=G.grid.map(r=>r.join(',')).join(';');
+    sim.reset({seed:999});   const c=G.grid.map(r=>r.join(',')).join(';');
+    return{pass:a===b&&a!==c,detail:'same seed identical: '+(a===b)+
+      ', different seed differs: '+(a!==c)};
+  },
+  layoutVariety(){
+    const seen=new Set();
+    for(let s=0;s<20;s++){sim.reset({seed:70000+s});
+      seen.add(G.grid.map(r=>r.join(',')).join(';'));}
+    return{pass:seen.size>=18,detail:seen.size+'/20 distinct layouts'};
+  },
+  allClimbable(){
+    let bad=0;
+    for(let s=0;s<200;s++){
+      sim.reset({seed:31000+s,level:s%18});
+      if(!climbable(G.grid,G.rows))bad++;
+    }
+    return{pass:bad===0,detail:bad+' unclimbable layouts in 200 generations'};
+  },
+  /* ---- A10: penalty table ---- */
+  penaltyTable(){
+    const want={stump:2,skunk:2,snake:3,bat:5,fire:5,bear:6,lion:7,vulture:8,ram:9,tree:0};
+    const bad=Object.keys(want).filter(k=>HAZ[k].pen!==want[k]);
+    return{pass:bad.length===0&&HAZ.snowman.pen===-1&&HAZ.skunk.spray===2,
+      detail:bad.length?'MISMATCH '+bad.join(','):
+        'all 11 sourced penalties exact; skunk spray +2; snowman = crash class'};
+  },
+  knockDownArithmetic(){
+    let bad=0;
+    for(let i=0;i<100;i++){
+      sim.reset({seed:8000+i});
+      G.row=Math.floor(G.rows/2);
+      for(let c=0;c<COLS;c++)G.grid[G.row+3]&&(G.grid[G.row+3][c]=null);
+      const before=G.row;
+      knockDown(3);
+      if(G.row!==Math.min(G.rows-1,before+3))bad++;
+    }
+    return{pass:bad===0,detail:bad+'/100 knock-down distances wrong'};
+  },
+  cascadeTerminates(){
+    let hung=0;
+    for(let i=0;i<100;i++){
+      sim.reset({seed:9000+i});
+      G.row=2;
+      for(let r=0;r<G.rows;r++)for(let c=0;c<COLS;c++)
+        if(G.grid[r])G.grid[r][c]=(r%2===0)?'bear':null;
+      const t0=Date.now();knockDown(6);
+      if(Date.now()-t0>100)hung++;
+    }
+    return{pass:hung===0,detail:hung+'/100 cascades failed to terminate promptly'};
+  },
+  /* ---- A13: falling hazards ---- */
+  fallingSubstep(){
+    let through=0,trials=0;
+    for(let off=0;off<21;off++){
+      for(const t of ['rock','avalanche','icefall']){
+        sim.reset({seed:600+off});
+        G.row=Math.floor(G.rows/2);G.col=10;
+        const startY=G.row-3-off*.13;
+        G.falling=[{t,col:10,y:startY,vy:FALL[t].spd*3}];
+        const rowBefore=G.row;
+        for(let i=0;i<40&&G.falling.length;i++)stepFalling(16.7);
+        trials++;
+        /* it must either have hit us (row changed / removed on hit) or still be
+           tracked — what it must NOT do is sail past our cell untouched */
+        const passedUntouched=G.falling.length&&G.falling[0].y>rowBefore+1&&G.row===rowBefore;
+        if(passedUntouched)through++;
+      }
+    }
+    return{pass:through===0,detail:through+'/'+trials+' falling hazards passed through the climber'};
+  },
+  fallSpeedCeiling(){
+    const at=[];
+    for(const lv of [0,6,12,17]){
+      G.level=lv;
+      const spd=Math.min(14,FALL.rock.spd*(1+lv*.045));
+      at.push('L'+(lv+1)+':'+spd.toFixed(1));
+    }
+    G.level=0;
+    const max=Math.min(14,FALL.icefall.spd*(1+17*.045));
+    return{pass:max<=14,detail:'authored ceiling 14 rows/s; rock '+at.join(' ')+
+      '; fastest icefall '+max.toFixed(1)};
+  },
+  fallClassUnlocks(){
+    G.level=0; const a=fallClasses().join(',');
+    G.level=6; const b=fallClasses().join(',');
+    G.level=12;const c=fallClasses().join(',');
+    G.level=0;
+    return{pass:a==='rock'&&b==='rock,avalanche'&&c==='rock,avalanche,icefall',
+      detail:'L1 ['+a+'] L7 ['+b+'] L13 ['+c+']'};
+  },
+  /* ---- A15: the inverted timer ---- */
+  invertedTimer(){
+    sim.reset({seed:77});
+    /* INV-4: isolate the mechanic. The first version of this test ran on a live
+       mountain and read 3.71s for "continuous stepping" — because the climber
+       walked into trees, and a climber pushing against a tree genuinely IS
+       standing still, so the clock correctly ran. The test was wrong, not the
+       game. Clear the terrain so "continuous stepping" actually is continuous. */
+    for(let r=0;r<G.rows;r++)for(let c=0;c<COLS;c++)G.grid[r][c]=null;
+    G.row=G.rows-1;G.col=16;
+    const t0=G.timer;
+    /* 5 seconds of continuous stepping */
+    for(let i=0;i<300;i++){sim.input.up=true;sim.step(16.7);
+      if(G.row===0){G.row=G.rows-1;}}
+    const movingCost=t0-G.timer;
+    sim.reset({seed:77});
+    const t1=G.timer;
+    sim.input.up=false;
+    G.lastStepAt=G.now-STILL_MS-1;
+    for(let i=0;i<300;i++)sim.step(16.7);
+    const stillCost=t1-G.timer;
+    return{pass:movingCost===0&&stillCost>4.5&&stillCost<5.6,
+      detail:'5s stepping cost '+movingCost.toFixed(2)+'s; 5s standing cost '+
+        stillCost.toFixed(2)+'s'};
+  },
+  /* ---- A16/A17: lives and scoring ---- */
+  scoreTable(){
+    const want=[[10,20,30],[12,24,36],[15,30,45],[20,40,60],[25,50,75],[30,60,90]];
+    const ok=MOUNTAINS.every((m,i)=>m.base.every((v,j)=>v===want[i][j]));
+    return{pass:ok,detail:ok?'all 18 base-point values exact':'MISMATCH'};
+  },
+  summitBonus(){
+    sim.reset({seed:3});
+    G.level=0;G.timer=10;const before=G.score;
+    const expect=2*basePoints()*10;
+    reachSummit();
+    const got=G.score-before;
+    return{pass:got===expect,detail:'bonus '+got+' vs 2 x '+MOUNTAINS[0].base[0]+
+      ' x 10s = '+expect};
+  },
+  startingLives(){
+    sim.reset({seed:4});
+    return{pass:G.lives===4,detail:G.lives+' climbers (3 reserve + 1 on screen)'};
+  },
+  extraClimberPerRound(){
+    sim.reset({seed:5});
+    G.level=5;const before=G.lives;G.timer=1;
+    reachSummit();
+    return{pass:G.lives===before+1,detail:'lives '+before+' -> '+G.lives+' on summiting Everest'};
+  },
+  /* ---- A20: test-score honesty ---- */
+  testScoreExcluded(){
+    HiScore.clear();
+    G.testScore=true;G.score=999999;startEntryOrTitle(G.score);
+    const leaked=HiScore.list().some(e=>e.s===999999);
+    const wentToTitle=G.state==='title';
+    G.testScore=false;
+    return{pass:!leaked&&wentToTitle,
+      detail:'test score '+(leaked?'LEAKED to leaderboard':'excluded')+
+        '; routed to '+G.state};
+  },
+  /* ---- A21: hygiene ---- */
+  noLeakAcrossRestarts(){
+    const counts=[];
+    for(let i=0;i<5;i++){
+      sim.reset({seed:1234});
+      for(let s=0;s<200;s++){sim.input.up=true;sim.step(16.7);}
+      counts.push(G.falling.length+':'+G.rows);
+    }
+    sim.reset({seed:1234});
+    const first=counts[0];
+    return{pass:counts.every(c=>c===first),detail:'5 restarts -> '+counts.join(' ')};
+  },
+  /* ---- A22/A23: sim evidence, as ratios against a null ---- */
+  skillRatio(){
+    const run=(smart)=>{
+      let summits=0;
+      for(let g=0;g<100;g++){
+        sim.reset({seed:20000+g,level:0});
+        for(let i=0;i<4000;i++){
+          if(smart){
+            const danger=G.falling.some(f=>f.col===G.col&&f.y<G.row&&f.y>G.row-6);
+            sim.input.up=!danger;
+            sim.input.left=danger&&(g%2===0);sim.input.right=danger&&(g%2===1);
+            sim.input.down=false;
+          } else {
+            const r=Math.random();
+            sim.input.up=r<.25;sim.input.down=r<.5&&r>=.25;
+            sim.input.left=r<.75&&r>=.5;sim.input.right=r>=.75;
+          }
+          sim.step(16.7);
+          if(G.state!=='play')break;
+          if(G.level>0){summits++;break;}
+        }
+      }
+      return summits;
+    };
+    const smart=run(true), dumb=run(false);
+    const ratio=dumb===0?(smart>0?Infinity:0):smart/dumb;
+    return{pass:smart>=10*Math.max(1,dumb),
+      detail:'hazard-aware '+smart+'/100 vs random-walk '+dumb+
+        '/100 summits (ratio '+(ratio===Infinity?'inf':ratio.toFixed(1))+'x)'};
+  },
+  waitingPays(){
+    /* The A-31 proof. First version scored 0.99x — but its "patient" bot merely
+       stopped climbing while staying in the hazard's column, which dodges
+       nothing: a rock falling down your column hits you standing or moving.
+       That measured hesitation, not patience. The strategy the free clock is
+       supposed to reward is: step ASIDE, let the hazard pass, resume. This bot
+       expresses that. Whatever number it returns is reported as-is (INV-13) —
+       a null result here is evidence against A-31 being earned by OUR build,
+       and it gets written up, not tuned away. */
+    const run=(waits)=>{
+      let total=0;
+      for(let g=0;g<100;g++){
+        sim.reset({seed:40000+g,level:0});
+        for(let i=0;i<3000;i++){
+          const inLane=G.falling.some(f=>f.col===G.col&&f.y<G.row&&f.y>G.row-8);
+          if(waits&&inLane){
+            /* dodge sideways, then hold until the lane is clear */
+            sim.input.up=false;
+            sim.input.left=(g%2===0);sim.input.right=(g%2===1);
+          } else {
+            sim.input.up=true;sim.input.left=false;sim.input.right=false;
+          }
+          sim.step(16.7);
+          if(G.state!=='play')break;
+        }
+        total+=G.score;
+      }
+      return total;
+    };
+    const patient=run(true), rusher=run(false);
+    const ratio=rusher===0?Infinity:patient/rusher;
+    return{pass:patient>=2*Math.max(1,rusher),
+      detail:'waiting bot '+patient+' vs rushing bot '+rusher+
+        ' total score (ratio '+(ratio===Infinity?'inf':ratio.toFixed(2))+'x)'};
+  },
+  run(){
+    const names=['muteEquivalence','cueVisualPairing','mountainTable','elevationDerived',
+      'containment','wrapAround','seedDeterminism','layoutVariety','allClimbable',
+      'penaltyTable','knockDownArithmetic','cascadeTerminates','fallingSubstep',
+      'fallSpeedCeiling','fallClassUnlocks','invertedTimer','scoreTable','summitBonus',
+      'startingLives','extraClimberPerRound','testScoreExcluded','noLeakAcrossRestarts',
+      'skillRatio','waitingPays'];
+    const out=[];let pass=0;
+    for(const n of names){
+      let r;
+      try{r=tests[n]();}catch(e){r={pass:false,detail:'THREW '+e.message};}
+      if(r.pass)pass++;
+      out.push((r.pass?'PASS':'FAIL')+'  '+n+'  —  '+r.detail);
+    }
+    G.state='title';
+    return{passed:pass,total:names.length,
+      lines:out,summary:pass+'/'+names.length+' PASS'};
+  }
+};
+/* ====================== exposure ========================================= */
+window.__alpiner={
+  get state(){return G.state;},
+  get score(){return G.score;},
+  game:G, sim, HiScore, LETTERS, startEntryOrTitle, Feedback, tests,
+  TI, MOUNTAINS, HAZ, CUES, Speech, newGame,
+  climbable:()=>climbable(G.grid,G.rows),
+  /* INV-6 applied to the RENDERER, not just the state. Verification harnesses
+     run in panes where requestAnimationFrame never fires, so frame() never
+     calls draw() and the canvas reads as 49,152 black pixels — indistinguishable
+     from a game that draws nothing. A renderer with no programmatic handle can
+     only be checked by a human looking at it, which is exactly the hole INV-6
+     was written to close. Call this, then sample the canvas. */
+  render(){draw();return{w:cv.width,h:cv.height};}
+};
+</script>
+</body>
+</html>

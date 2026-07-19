@@ -159,8 +159,11 @@ const Conformance = (() => {
          empty this list.
          2026-07-19: rung-6 games added — new builds conform to the current
          contract [ASSUMED default, Daniel may strike]. Rungs 2-4 still
-         abstain pending his rollout call. */
-      pilotOnly: ['wumpus', 'parsec', 'munchman', 'anteater', 'deliverance'],
+         abstain pending his rollout call.
+         2026-07-19 (rung 8): alpiner added in the same commit as the game,
+         per INV-18 — the contract and the thing that fails when it is unmet
+         ship together, never "we'll wire the check after". */
+      pilotOnly: ['wumpus', 'parsec', 'munchman', 'anteater', 'deliverance', 'alpiner'],
       check(g, name) {
         if (!this.pilotOnly.includes(name)) {
           return { pass: null,
@@ -235,8 +238,14 @@ const Conformance = (() => {
     catch (e) { out.problems.push('could not fetch index.html'); }
 
     // A rung is PLAYABLE if its folder is linked as playable in each document.
+    // 2026-07-19 (rung 8): '08-ti994a-3' added. This list is hand-maintained, and
+    // that is a live INV-19 hazard: a rung missing from it is not checked, and the
+    // docs verdict comes back problems=[] — a clean pass earned by not looking.
+    // Caught on rung 8 by reading the per-rung table instead of the verdict, which
+    // is the same reflex that caught the standalone 404 on rung 4. Whoever adds
+    // rung 9 must add its slug here IN THE SAME COMMIT (INV-18).
     for (const slug of ['02-invaders', '03-breakout', '04-galaga', '05-ti994a',
-                        '06-ti994a-2', '07-deliverance']) {
+                        '06-ti994a-2', '07-deliverance', '08-ti994a-3']) {
       const inReadme  = readme.includes('rungs/' + slug + '/');
       const inLanding = landing.includes('rungs/' + slug + '/');
       // "not built" / "queued" markers next to the slug's game name

@@ -817,6 +817,145 @@ ill-funded to start properly.
 
 ---
 
+## Rung 8 — ALPINER (Texas Instruments, 1982)
+
+*Dug 2026-07-19, before any code. Rung chosen by Daniel's brother on a family holiday,
+which overrides the 2026-07-18 back-burner ruling ("diminishing trove returns" — the
+worry that a third TI-99/4A game teaches less than the first two). **The worry was
+wrong, and why it was wrong is this rung's finding: Alpiner does not confirm A-19, it
+complicates it.** A third game on one machine was the only way to catch that, because
+the contradiction only appears when two games on the same platform make opposite bets
+with the same peripheral.*
+
+**Primary source obtained:** the original TI Alpiner manual, full text (archive.org
+item `AlpinerManual`). Where the manual speaks it is authoritative here; secondary
+sources are named at the point of claim, and the open questions below are genuinely
+open rather than softened.
+
+**Programmed by Janet Srimushnam** (manual credits page; corroborated by Wikipedia,
+4apedia, videogamehouse). Voices by Aubree Anderson and Cliff Easthom. Published Q4
+1982, part no. PHM 3056, $39.95. **No preserved interview with Srimushnam was found**
+— every statement of design *intent* below is inference from the artifact, not
+testimony, and is tagged as such. Alpiner appears to be her only industry credit
+[ASSUMED — single-source].
+
+### The peripheral problem (the finding)
+
+Rung 5 read Parsec's speech and earned **A-19**: a new output channel earns its keep
+when it carries information the busy channel would drop. Alpiner uses the *same
+optional peripheral* on the *same machine* and cannot have made that trade — and the
+manual says why in its own words: Alpiner is **"designed to work with or without the
+Texas Instruments Solid State Speech Synthesizer (sold separately)."**
+
+That sentence is a design constraint with teeth. The synthesizer was sold separately,
+so the cartridge had to be a complete and fair game for every owner without one.
+**Any warning the speech carried that the screen did not therefore had to be
+redundant**, or the silent majority was quietly playing a harder game than the box
+advertised. The publisher's own copy braids three functions — "warning you of
+approaching obstacles, commenting on your performance, and congratulating you for
+obtaining bonus points" — but only the first is actionable, and it is precisely the
+one that cannot be allowed to matter.
+
+What the peripheral uniquely delivered was **affect**: a sarcastic female voice
+("Good move, sport." on a fall; "Yuck!" on a skunk spray) against an encouraging male
+one ("Onward and upward"). The reviewer record is the tell — players remember being
+*taunted*, not *warned*. One review's reaction to the sarcasm: **"you want to go back
+and show her by conquering that mountain."** The accessory sold retention through
+antagonism, not advantage.
+
+**Honest limit, and it is the crux:** no source establishes the *timing* of a spoken
+warning relative to the hazard becoming visible. Fired before the sprite enters the
+screen, it is a real information channel; fired simultaneously, it is decoration with
+a functional veneer. [ASSUMED: redundant, because graceful degradation forces it.
+Resolvable only by frame-accurate emulator capture comparing audio onset to the
+hazard's first visible frame — not done. **A-30 rests on the design economics, which
+are sourced, not on the timing, which is not.**]
+
+### The inverted timer
+
+The manual, verbatim: **"Time allotted for your climb is not counted down except when
+the Alpiner is not moving."** The clock runs *only while you stand still*.
+
+Not a quirk — a fix for a problem the genre creates. In a climbing game the correct
+play is often to **wait**: let the rockslide pass, let the ram go by. A conventional
+countdown punishes exactly that, so the game would teach patience with one hand and
+tax it with the other. Decoupling the clock from real time makes patience free and
+**hesitation** expensive: wait out a hazard as long as you like, but dithering about
+where to go costs you. [Mechanic VERIFIED: manual. Rationale ASSUMED — mine; no
+designer statement exists.]
+
+### The shape of the climb
+
+Six mountains, ordered strictly by real elevation: **Hood (3,427 m) → Matterhorn
+(4,477) → Kenya (5,193) → McKinley (6,194) → Garmo (7,495) → Everest (8,848)**, across
+18 levels in 3 rounds. Eleven obstacles with sourced step penalties (stump 2, skunk 2
+plus 2 more for the spray, snake 3, bat 5, brush fire 5, bear 6, mountain lion 7,
+vulture 8, ram 9) and the **Abominable Snowman on skis**, who costs no steps at all —
+he "sends you crashing to the bottom of the mountain." Falling hazards escalate by
+round: rockslides throughout, avalanches from level 7, icefalls from level 13. You
+ascend **46 metres per upward step**; the screen wraps left-to-right, so the mountain
+is a cylinder. Four Alpiners to start, one more per completed round.
+
+**The layout question, and it changes the design:** one source states mountain layouts
+are **randomly generated each play** [ASSUMED — single-source, absent from the manual].
+If true, Alpiner is a hybrid: an *authored* difficulty curve (six named peaks, fixed
+order, hazard classes unlocked at levels 7 and 13) wrapped around a *randomised*
+layout inside each climb. More interesting than either pure model, because neither
+half has to do the other's job — named peaks supply legibility and pacing,
+randomisation supplies replay.
+
+**Unresolved and load-bearing:** whether the display scrolls, flips screens, or shows
+a whole mountain at once. **46 m/step against Everest's 8,848 m implies ~192 upward
+steps**, which cannot fit in 24 character rows — so the view must advance somehow, and
+no source says how. Our build makes an authored call (UX_DECISIONS) rather than
+guessing at TI's; the arithmetic is on the record so the call can be re-picked when
+someone watches a real Everest climb in an emulator.
+
+### Suffering Ledger — rung 8
+
+| Constraint | Verdict | Reasoning |
+|---|---|---|
+| Optional speech peripheral, game complete without it | **KEEP — the rung's thesis** | A-30. Our speech must be strictly redundant; muting must never make the game harder, and that is machine-checkable |
+| Timer runs only while stationary | **KEEP** | A-31. The mechanic that makes waiting out a hazard a real strategy instead of a punished one |
+| Named fixed peak order + randomised layout within a climb | **KEEP** | A-32. Authored curve, procedural detail — and randomisation is what makes a climbing game bear replay |
+| Wrap-around screen (mountain as cylinder) | **KEEP** | Sourced, cheap, and it changes routing: there is always a way around, at a step cost |
+| 46 m per step, real elevations | **KEEP** | Free legibility — the summit number means something, and six named peaks are a difficulty curve the player can say out loud |
+| Step-penalty table (knock-downs graded by hazard) | **KEEP** | The graduated cost IS the difficulty texture; binary die/don't-die flattens eleven hazards into one |
+| Cascading fall to the bottom = lose a climber | **KEEP** | The Snowman needs a punishment class of his own or he is just an expensive ram |
+| TMS9918A 15-colour palette | **KEEP** | Series constraint since rung 5; the machine's own look on the machine's own rung |
+| 4 sprites per scanline / flicker multiplexing | **SKIP the limit, KEEP the finding** | A-33 is the trove entry; reproducing flicker is tedium without a lesson (rung 7 precedent) |
+| Monochrome one-colour sprites | **SKIP** | Recorded as the reason 1982 hazard art looks flat; nothing in our design needs the restriction |
+| 256-byte CPU scratchpad / GROM serial addressing | **SKIP the mechanism, KEEP A-17** | Already earned on rung 5; re-paying it teaches nothing new |
+| Speech as LPC data in the cartridge | **SKIP the silicon, KEEP the result** | Series ruling since rung 2 — the sound matters, the chip doesn't |
+| Two-player alternating turns on one mountain | **SKIP (v1)** | Sources disagree (manual "for his or her turn" vs 4apedia "simultaneous"); unresolved, and out of scope either way |
+| `*#*` Test mode (1–9 lives, levels 1–18) | **KEEP** | Sourced debug entry point and the sim's honest level-jump path — rung-6 precedent (TI's own instrument-honesty law) |
+
+### Open questions — rung 8
+
+*The web record on Alpiner is thin past this point; all of these want an emulator
+session, not more searching.*
+
+1. **Does the display scroll, flip screens, or show the mountain at once?** The most
+   load-bearing gap. The 46 m/step arithmetic contradicts a single-screen reading and
+   nothing addresses it directly.
+2. **Is the spoken warning anticipatory or simultaneous?** The crux of A-30 vs A-19.
+   Unstated everywhere.
+3. **What happens after level 18** — ending, loop, or endless at max difficulty. Manual
+   silent, no secondary source.
+4. **The complete speech phrase list.** ~5 fragments recovered, none from the manual;
+   one ("Did you mean to do that?") is an admitted paraphrase.
+5. **Which mountain introduces which hazard.** 4apedia asserts elevation-band grouping;
+   unconfirmed against the manual.
+6. **Are layouts truly randomised per play?** Single-source. Materially changes A-32.
+7. **How target bonuses (bear 500 / lion 750 / ram 1000) are triggered** — collision, or
+   a separate aim action? Unexplained in every source found.
+8. **Is the climber a sprite or a background character**, and does Alpiner multiplex
+   sprites? Inferred from the jerky/smooth split and reported flicker; not confirmed.
+9. **Any designer statement from Janet Srimushnam.** None located.
+10. **Two-player: alternating or simultaneous?** Manual and 4apedia disagree.
+
+---
+
 ## Running list of transferable lessons
 
 *The trove. One line per finding, sourced, added as each rung is dug.*
@@ -852,3 +991,7 @@ ill-funded to start properly.
 | A-27 | Game feel is a table of numbers — authored, deterministic, transcribable, testable. Fixed timestep and fixed point are what make feel reproducible | 7 | 16 subpixels/px on a chip with no multiply; gravity piecewise on velocity and keyed to a held button |
 | A-28 | At a noisy boundary the read is not the value — input is a measurement, and verification belongs at the boundary, once | 7 | NTSC DPCM DMA double-clocks the pad register into phantom RIGHT presses; shipped games read twice and compare |
 | A-29 | Theme selects who shows up; mechanics decide whether they stay — an underserved audience forgives craft debt exactly once | 7 | Bible Adventures: SMB2-engine reskin, 350k sold through the channel the gate couldn't reach, remembered for its craft debt |
+| A-30 | **An optional peripheral forces its own channel to be redundant.** If the accessory is sold separately, the base game must be complete without it — so the add-on cannot carry load-bearing information, and what it actually sells is *affect*, not advantage. **Complicates A-19: whether a channel may carry unique information is decided by the business model, not the bandwidth** | 8 | Alpiner "designed to work with or without" the speech synthesizer; players remember the sarcasm ("Good move, sport."), not the warnings |
+| A-31 | Decouple the clock from real time and you can price *hesitation* instead of *slowness* — when the correct play is sometimes to wait, a conventional countdown taxes the very patience the design is teaching | 8 | Alpiner's timer counts down only while the climber is standing still |
+| A-32 | An authored curve wrapped around a randomised layout lets each supply what the other can't — named fixed stages give legibility and pacing, procedural detail gives replay, and neither has to do the other's job | 8 | Six real peaks in fixed elevation order, hazard classes unlocked at levels 7 and 13, layouts generated per play [ASSUMED — single-source] |
+| A-33 | Motion smoothness advertises which layer an object lives on — a jerky background against smooth hazards is not bad animation, it is the tile/sprite split made visible, and players read it as a style | 8 | TMS9918A: cell-quantised terrain moving in 8px jumps while skunks and falling rocks move per-pixel as sprites |

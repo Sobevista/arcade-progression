@@ -589,6 +589,90 @@ not an oversight. It should be revisited the moment either becomes true:
   rollout, release gating — now four rungs waiting), and Phase 2 scoping (staff
   power-ups, more worlds, enemy variety) after the feel verdict lands.**
 
+- **2026-07-19 — RUNG 8 (TI-99/4A part III: ALPINER) BUILT AND MACHINE-VERIFIED,
+  archaeology first, same session. 24/24 suite, CONFORMANT 11/11 (+1 n/a), 46 KB.
+  Built on LAPTOP-3GLEQ7L1 — the first arcade work off the promoted laptop node.**
+
+  **Provenance of the rung:** Alpiner was **back-burnered 2026-07-18** for
+  diminishing trove returns. **Daniel's brother chose it** on a family holiday,
+  which overrides the ruling; Daniel was on Auto. The back-burner reasoning turned
+  out to be wrong, and the reason is the rung's whole finding.
+
+  Dig landed before any code, off the **original TI manual as a primary source**
+  (archive.org `AlpinerManual`) plus ten explicitly unsourced items:
+  **A-30** (an optional peripheral forces its own channel to be redundant — the
+  synthesizer was sold separately, so speech could not carry load-bearing
+  information, and what the accessory actually sold was *affect*; **this
+  COMPLICATES A-19 rather than confirming it** — whether a channel may carry unique
+  information is decided by the business model, not the bandwidth), **A-31** (the
+  inverted timer: the clock counts down only while the climber is *stationary*, so
+  patience is free and hesitation is expensive), **A-32** (authored curve wrapped
+  around randomised layout — neither half doing the other's job), **A-33** (motion
+  smoothness advertises which layer an object lives on; the jerky/smooth split is
+  the tile/sprite boundary made visible). Trove now **20 invariants / 33 findings**.
+
+  **The A-30 finding is ENFORCED, not narrated** — the rung's point. `Speech.say()`
+  cannot read or write game state, every cue's on-screen half is set independent of
+  audio, and `tests.muteEquivalence()` drives **20 seeded games on an identical
+  input tape with speech on vs off: 20/20 byte-identical** outcome tuples. A trove
+  entry that can fail a test is worth more than one that can only be quoted.
+
+  Sourced exactly: six peaks in ascending elevation (Hood 3,427 → Everest 8,848),
+  **46 m per step** (so summit step-counts are *derived*, not authored — Hood 75,
+  Everest 193), all eleven obstacle penalties, the Snowman as his own crash class,
+  falling-hazard unlocks at levels 7 and 13, the 18 base-point values, summit bonus
+  = 2 × base × seconds remaining, four climbers +1 per round, and the `*#*` Test
+  mode whose scores are barred from the leaderboard (rung-6 precedent).
+  **Corrected from memory before it reached code:** the mountain order is Hood →
+  Matterhorn → Kenya → McKinley → Garmo → Everest — I had McKinley second (INV-10,
+  again; the source cost thirty seconds).
+
+  **INV-3 scoreboard, first run 19/24 — three real bugs, one bad test, one bad bot:**
+  (1) `spawnAcc` was module-level and never cleared on reset, so seeds were
+  contaminated by whatever had been played before — it *presented* as speech
+  breaking A-30 and was nothing of the kind; (2) `stepFalling()` held a stale loop
+  bound over `G.falling` while `knockDown → loseLife → respawn` replaced the array
+  underneath it (INV-12's cousin); (3) `fitTouch()` used `classList.toggle` on
+  `resize`, so it **tore off the `.touch` class the conformance checker had just
+  added to measure with** — a checker defeated by its own subject, INV-19's mirror
+  image; (4) the timer test read 3.71s for "continuous stepping" because the climber
+  was walking into trees, and a climber pushing a tree genuinely *is* stationary —
+  **the test was wrong, the mechanic was right** (INV-4, and I nearly changed the
+  game); (5) `waitingPays` read 0.99× because my "patient" bot stopped climbing
+  *inside the hazard's lane*, measuring hesitation rather than patience.
+
+  **Honest flag on that last one:** I changed the bot and the number went 0.99× →
+  **2.49×**. The game was untouched and the first bot did not implement the
+  hypothesis at all — but this is precisely the move INV-13 warns about, it is
+  logged as such in the RUN_LOG, and **if the family playtest says waiting doesn't
+  feel worth it, the humans outrank the 2.49×**.
+
+  **A hole in INV-6 found the hard way:** the canvas sampled as 49,152 black pixels
+  while 24 tests passed. Cause was `requestAnimationFrame` never firing in the
+  verification pane, so `draw()` never ran — but **a game that draws nothing and a
+  game whose frame loop is paused are byte-identical to a checker.** INV-6 bought a
+  handle into *state*; the renderer had none, leaving it exactly in the eyeball-only
+  position INV-6 exists to abolish. Added `__alpiner.render()`; title screen then
+  sampled 2,718 non-black px incl. TI cyan, mid-climb 42,421 of 49,152.
+  **Candidate invariant for Daniel's ruling — deliberately NOT written into
+  INVARIANTS.md by me:** *a read-only handle into state does not cover the renderer,
+  and a paused frame loop is indistinguishable from a renderer that draws nothing.*
+
+  Feedback contract extended to Alpiner [ASSUMED default — Daniel may strike];
+  `pilotOnly` updated **in the same commit as the game** (INV-18). Docs flipped
+  together (README + landing). `releases.json` untouched. Committed locally;
+  **push is Daniel's** (publishing gate).
+
+  **NEXT ACTION: nobody has played this.** INV-9 is the gate — 24 green tests prove
+  I met my criteria, not that they were right, and on rung 2 every behavioural
+  defect came from a human. Specific things to attack: does the frozen clock read as
+  deliberate or broken (HUD says "TIME HELD" in green — my untested guess at
+  legibility)? Is 46 m/step the right *feel* when Everest is 193 steps on a real
+  thumb? The `A18` target-bonus trigger is **[ASSUMED]** — no source explains how
+  bonuses fire in the original. Then: the stacked calls are now five rungs deep
+  (T9 bar, feedback rollout to 2–4, release gating), plus the renderer-handle
+  invariant ruling above.
+
 - **2026-07-18 ~20:30 — First playtest lap ran the same sitting (feedback loop at
   chat speed, second rung in a row).** Daniel finished the world first try
   (14,790) and immediately caught what the machine verification could not:
