@@ -87,6 +87,47 @@ const TI={
   darkGreen:'#21b03b',   magenta:'#c95bba',
   gray:'#cccccc',        white:'#ffffff'
 };
+/* ====================== sprites ==========================================
+   8x8 monochrome patterns — one colour per sprite, which is what the TMS9918A
+   actually enforced (A-33). Drawn as pixels, not as letters.
+
+   v1 of this file rendered every hazard as a monospace CHARACTER ('T' for tree,
+   's' for skunk, '~' for snake) and shipped that as a finished rung. Daniel's
+   first look: "that is a bunch of letters on a screen." He was right, and the
+   instrument I had pointed at it made it worse — I sampled the canvas, counted
+   42,421 non-black pixels, and read that as "the renderer works." Counting lit
+   pixels does not measure whether anything is legible; typography lights pixels
+   too. INV-13 exactly: the proxy was easy to compute because it had dropped the
+   hard part of the task. */
+const P={
+  tree:     '...XX.....XXXX...XXXXXX...XXXX...XXXXXX.XXXXXXXX...XX......XX...',
+  stump:    '..................XXXX...XXXXXX..XXXXXX...XXXX.....XXXX...XXXXXX',
+  skunk:    '......X......XX.....XX...XXXXX..XXXXXXX.XXXXXXX..X.X.X..........',
+  snake:    '..........XX......X..X..XX..X...XX.X.X.X...X...X.......XX.......',
+  bat:      '........X......XXX....XXXXXXXXXX.XX.XX....X..X..................',
+  fire:     '...X......XX......XXX....XXXXX...XXXXX..XXXXXXX.XXXXXXX..XXXXX..',
+  bear:     '.X....X.XXX..XXX.XXXXXX..XXXXXX.XXXXXXXXXXXXXXXXX.XXXX.XX......X',
+  lion:     '.XXXXXX.XXXXXXXXXX.XX.XXXXXXXXXX.XXXXXX...XXXX...X.XX.X..X....X.',
+  vulture:  '...XX...XX.XX.XXXXXXXXXXXXXXXXXX.XXXXXX...X..X..................',
+  ram:      'XX....XXX.X..X.XX..XX..X.XXXXXX..XXXXXX.XXXXXXXX.X.XX.X..X....X.',
+  snowman:  '..XXXX...XXXXXX..X.XX.X..XXXXXX.XXXXXXXXXXXXXXXXX.XXXX.XX.X..X.X',
+  climber:  '..XXX.....XXX....XXXXX..XXXXXXX...XXX.....XXX....XX.XX...X...X..',
+  rock:     '..........XXX....XXXXX..XXXXXXX.XXXXXXX..XXXXX....XXX...........',
+  avalanche:'.XX..XX.XXXXXXXXXXXXXXXX.XXXXXX.XX.XX.XXXXXXXXXX.XX..XX.........',
+  icefall:  'XXXXXXXXXXXXXXXX.XXXXXX..XXXXXX...XXXX....XXXX.....XX.......X...',
+  flag:     '..X.......XXXX....XXXXX...XXXX....X.......X.......X.......X.....'
+};
+/* Pre-rendered into little canvases, one per (sprite, colour). */
+const SPR={};
+function sprite(name,col){
+  const k=name+'|'+col;
+  if(SPR[k])return SPR[k];
+  const c=document.createElement('canvas');c.width=8;c.height=8;
+  const g=c.getContext('2d');g.fillStyle=TI[col]||col;
+  const pat=P[name]||'';
+  for(let i=0;i<64;i++)if(pat[i]==='X')g.fillRect(i%8,(i/8)|0,1,1);
+  SPR[k]=c;return c;
+}
 /* ====================== sourced constants ================================= */
 /* Every number in this block comes from the TI Alpiner manual (archive.org item
    AlpinerManual) unless tagged. See ARCHAEOLOGY.md rung 8. */
@@ -230,7 +271,12 @@ function generate(seed){
   const rows=stepsToSummit()+1;                 /* row 0 = summit */
   const grid=[];
   const mix=hazardMix(G.level);
-  const density=Math.min(.30,.12+G.level*.011); /* [AUTHORED] ramp */
+  /* [AUTHORED] ramp. First pass ran .12 -> .30 and the screen read as clutter:
+     a hazard in roughly every third cell leaves no clean ground to route
+     through, so the wrap-around (A6) and the step-penalty grading (A10) both
+     stop mattering — everything is a hazard, so nothing is a decision.
+     Halved after looking at it. */
+  const density=Math.min(.16,.055+G.level*.006);
   for(let r=0;r<rows;r++){
     const row=new Array(COLS).fill(null);
     if(r>0&&r<rows-2){
@@ -444,41 +490,108 @@ function update(dt){
   if(G.cue&&G.now>G.cueUntil)G.cue=null;
 }
 /* ====================== rendering ========================================= */
-function px(c,r,col){cx.fillStyle=TI[col];cx.fillRect(c*CELL,(r-G.camera)*CELL,CELL,CELL);}
-function glyph(c,r,ch,col){
-  cx.fillStyle=TI[col];cx.font='8px monospace';cx.textAlign='center';
-  cx.textBaseline='middle';
-  cx.fillText(ch,c*CELL+CELL/2,(r-G.camera)*CELL+CELL/2+1);
+function blit(name,col,x,y){cx.drawImage(sprite(name,col),Math.round(x),Math.round(y));}
+/* deterministic per-cell noise so the rock face has grain instead of being a
+   flat wash of colour — the thing that made v1 read as a spreadsheet */
+/* A real 32-bit mixer. The first version was
+     (r*73856093) ^ (c*19349663), then one shift-xor
+   which loses precision on the multiplies (JS numbers are doubles, the products
+   exceed 2^53's useful range for the XOR) and does not avalanche after a single
+   round. Measured output for hash(8, 0..7): 0.138 0.133 0.131 0.126 0.155 0.152
+   0.148 0.169 — a 0.04 spread where 0..1 was assumed. The terrain "noise" was
+   therefore almost CONSTANT (0.232 across every column of a row), so the relief
+   shading had nothing to shade and the face rendered flat.
+   Caught by probing the distribution instead of squinting at the output — the
+   picture told me something was wrong, the numbers told me what. */
+function hash(r,c){
+  let h=Math.imul(r|0,0x27d4eb2d)^Math.imul(c|0,0x165667b1);
+  h=Math.imul(h^(h>>>15),0x85ebca6b);
+  h=Math.imul(h^(h>>>13),0xc2b2ae35);
+  return ((h^(h>>>16))>>>0)/4294967296;
+}
+/* The mountain face, by altitude band. Snow at the top, bare rock through the
+   middle, treeline, then forested lower slopes. */
+function faceBand(r){
+  const frac=1-r/G.rows;
+  if(frac>.80)return{base:'#dfe6f2',dark:'#b9c4d8',lite:'#ffffff',rock:true};
+  if(frac>.62)return{base:'#9aa3b2',dark:'#6f7787',lite:'#c3ccdb',rock:true};
+  if(frac>.40)return{base:'#6d6a5c',dark:'#4d4a40',lite:'#8d8a78',rock:true};
+  if(frac>.20)return{base:'#2f5a33',dark:'#22421f',lite:'#3f7440'};
+  return{base:'#2a6b30',dark:'#1d4a22',lite:'#3d8a3a'};
+}
+/* Smoothed low-frequency noise. The first version used raw per-cell hash, which
+   produced a uniform dot lattice — it read as a fabric swatch, not as ground.
+   Relief needs features BIGGER than one cell. */
+function vnoise(r,c,scale){
+  const rr=r/scale, cc=c/scale;
+  const r0=Math.floor(rr), c0=Math.floor(cc);
+  const fr=rr-r0, fc=cc-c0;
+  const sr=fr*fr*(3-2*fr), sc=fc*fc*(3-2*fc);
+  const h=(a,b)=>hash(a,((b%64)+64)%64);
+  const a=h(r0,c0), b=h(r0,c0+1), d=h(r0+1,c0), e=h(r0+1,c0+1);
+  return (a*(1-sc)+b*sc)*(1-sr)+(d*(1-sc)+e*sc)*sr;
+}
+function mix(hex1,hex2,t){
+  const p=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+  const A=p(hex1),B=p(hex2);
+  return 'rgb('+Math.round(A[0]+(B[0]-A[0])*t)+','+Math.round(A[1]+(B[1]-A[1])*t)+','+
+    Math.round(A[2]+(B[2]-A[2])*t)+')';
+}
+function drawFace(){
+  for(let vr=0;vr<VIEW_ROWS;vr++){
+    const r=G.camera+vr;if(r<0||r>=G.rows)continue;
+    const b=faceBand(r);
+    for(let c=0;c<COLS;c++){
+      /* two octaves of relief — broad slabs plus finer break-up */
+      const n=vnoise(r,c,7)*.68+vnoise(r,c,2.5)*.32;
+      /* the face is ROUND: brighter down the centre line, falling off toward
+         the shoulders, so the screen reads as a curved flank rather than a wall */
+      const dx=Math.abs(((c+16)%COLS)-16)/16;
+      const round=1-dx*dx*.55;
+      const lum=Math.max(0,Math.min(1,(n*.85+.15)*round));
+      cx.fillStyle=lum<.5?mix(b.dark,b.base,lum*2):mix(b.base,b.lite,(lum-.5)*2);
+      cx.fillRect(c*CELL,vr*CELL,CELL,CELL);
+      /* contour seams where the relief crosses a level — reads as strata on
+         rock and as wind-scour on snow */
+      const nAbove=vnoise(r-1,c,7)*.68+vnoise(r-1,c,2.5)*.32;
+      if(Math.floor(n*9)!==Math.floor(nAbove*9)){
+        cx.fillStyle=b.dark;cx.globalAlpha=.5;
+        cx.fillRect(c*CELL,vr*CELL,CELL,1);cx.globalAlpha=1;
+      }
+      /* crevasses: only on the high ground, and only in the deep folds */
+      if(b.rock&&n<.14){cx.fillStyle='#20283a';
+        cx.fillRect(c*CELL+2,vr*CELL,3,CELL);}
+    }
+    /* the summit ridge, with sky above it */
+    if(r===0){
+      cx.fillStyle='#0a0f1e';cx.fillRect(0,vr*CELL-CELL,256,CELL);
+      cx.fillStyle='#ffffff';cx.fillRect(0,vr*CELL,256,CELL);
+      cx.fillStyle='#cfd8ea';cx.fillRect(0,vr*CELL+6,256,2);
+      blit('flag','mediumRed',15*CELL,vr*CELL);
+    }
+  }
 }
 function draw(){
   cx.fillStyle=TI.black;cx.fillRect(0,0,256,192);
   if(G.state==='title'){drawTitle();return;}
   if(G.state==='entry'){drawEntry();return;}
-  /* mountain face: darker as you climb (altitude), cell-quantised (A-33) */
-  for(let vr=0;vr<VIEW_ROWS;vr++){
-    const r=G.camera+vr;if(r<0||r>=G.rows)continue;
-    const frac=1-r/G.rows;
-    const band=frac>.82?'white':frac>.55?'gray':frac>.28?'darkGreen':'mediumGreen';
-    for(let c=0;c<COLS;c++){
-      cx.fillStyle=TI[band];
-      cx.globalAlpha=.16;cx.fillRect(c*CELL,vr*CELL,CELL,CELL);cx.globalAlpha=1;
-    }
-    if(r===0){for(let c=0;c<COLS;c++)px(c,r,'lightYellow');}
-  }
+  drawFace();
   for(let vr=0;vr<VIEW_ROWS;vr++){
     const r=G.camera+vr;if(r<0||r>=G.rows)continue;
     for(let c=0;c<COLS;c++){
       const h=G.grid[r][c];
-      if(h)glyph(c,r,HAZ[h].ch,HAZ[h].col);
+      if(h)blit(h,HAZ[h].col,c*CELL,vr*CELL);
     }
   }
   for(const f of G.falling){
     if(f.y<G.camera-1||f.y>G.camera+VIEW_ROWS)continue;
-    cx.fillStyle=TI[FALL[f.t].col];cx.font='8px monospace';cx.textAlign='center';
-    cx.textBaseline='middle';
-    cx.fillText(FALL[f.t].ch,f.col*CELL+CELL/2,(f.y-G.camera)*CELL+CELL/2+1);
+    blit(f.t,FALL[f.t].col,f.col*CELL,(f.y-G.camera)*CELL);
   }
-  glyph(G.col,G.row,'A','cyan');
+  /* the climber: a dark outline pass under the sprite so he reads against both
+     white snow and dark forest — he is the one thing that must never be lost */
+  const cyPix=(G.row-G.camera)*CELL;
+  cx.fillStyle='rgba(0,0,0,.55)';cx.fillRect(G.col*CELL,cyPix,CELL,CELL);
+  blit('climber','cyan',G.col*CELL,cyPix);
   drawHud();
 }
 function drawHud(){
@@ -774,6 +887,52 @@ const tests={
     return{pass:bad.length===0,detail:Object.keys(CUES).length+
       ' cues, every one carries an on-screen text half'+(bad.length?' EXCEPT '+bad:'')};
   },
+  /* ---- the check that should have existed before v1 shipped ----
+     v1 drew every entity as a monospace CHARACTER and passed 24/24, because
+     nothing in the suite asserted that a thing on screen is a PICTURE. The
+     canvas sampled 42,421 non-black pixels and I read that as proof the
+     renderer worked — but typography lights pixels too (INV-13: the proxy was
+     easy to compute because it had dropped the hard part). This asserts the
+     hard part it dropped. */
+  spriteIntegrity(){
+    const need=Object.keys(HAZ).concat(Object.keys(FALL)).concat(['climber','flag']);
+    const problems=[];
+    const seen={};
+    for(const n of need){
+      const pat=P[n];
+      if(!pat){problems.push(n+':MISSING');continue;}
+      if(pat.length!==64){problems.push(n+':'+pat.length+'cells');continue;}
+      const lit=(pat.match(/X/g)||[]).length;
+      if(lit<6)problems.push(n+':only'+lit+'px');
+      if(seen[pat])problems.push(n+':identical to '+seen[pat]);
+      seen[pat]=n;
+    }
+    return{pass:problems.length===0,
+      detail:problems.length?problems.join(' | ')
+        :need.length+' entities, each a distinct 8x8 bitmap of 64 cells, none blank'};
+  },
+  /* The terrain's own version of the same lesson: the relief noise was flat
+     (0.232 across an entire row) because of a broken hash, so the "mountain"
+     rendered as one solid wash. A constant is not a texture. */
+  terrainRelief(){
+    const vals=[];
+    for(let r=20;r<60;r++)for(let c=0;c<COLS;c++)
+      vals.push(vnoise(r,c,7)*.68+vnoise(r,c,2.5)*.32);
+    const min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
+    const mean=vals.reduce((a,b)=>a+b,0)/vals.length;
+    const sd=Math.sqrt(vals.reduce((a,b)=>a+(b-mean)*(b-mean),0)/vals.length);
+    /* also prove neighbouring cells actually differ — a smooth gradient with no
+       local variation would pass a range test and still look like a wash */
+    let neigh=0;
+    for(let r=20;r<60;r++)for(let c=0;c<COLS-1;c++){
+      const a=vnoise(r,c,7)*.68+vnoise(r,c,2.5)*.32;
+      const b=vnoise(r,c+1,7)*.68+vnoise(r,c+1,2.5)*.32;
+      if(Math.abs(a-b)>.01)neigh++;
+    }
+    return{pass:(max-min)>.45&&sd>.10&&neigh>vals.length*.5,
+      detail:'range '+min.toFixed(2)+'-'+max.toFixed(2)+', sd '+sd.toFixed(3)+
+        ', '+neigh+' varying neighbour pairs'};
+  },
   /* ---- A3/A4: sourced geometry ---- */
   mountainTable(){
     const want=[3427,4477,5193,6194,7495,8848];
@@ -1053,7 +1212,8 @@ const tests={
         ' total score (ratio '+(ratio===Infinity?'inf':ratio.toFixed(2))+'x)'};
   },
   run(){
-    const names=['muteEquivalence','cueVisualPairing','mountainTable','elevationDerived',
+    const names=['spriteIntegrity','terrainRelief','muteEquivalence','cueVisualPairing',
+      'mountainTable','elevationDerived',
       'containment','wrapAround','seedDeterminism','layoutVariety','allClimbable',
       'penaltyTable','knockDownArithmetic','cascadeTerminates','fallingSubstep',
       'fallSpeedCeiling','fallClassUnlocks','invertedTimer','scoreTable','summitBonus',

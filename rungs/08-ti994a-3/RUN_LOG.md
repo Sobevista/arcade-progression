@@ -176,3 +176,94 @@ Specific things I expect play to challenge:
 
 `releases.json` untouched — **what is advertised stays Daniel's pacing call.**
 Committed locally; **the push is Daniel's** (publishing gate).
+
+---
+
+## Same session, after Daniel looked at it — THE GAME HAD NO GRAPHICS
+
+He opened it and said: *"That without a doubt is NOT alpiner. That is a bunch of
+letters on a screen."* He was exactly right. Every entity was a **monospace
+character** — `T` for tree, `n` for stump, `s` for skunk, `~` for snake, `A` for
+the climber — on a flat green wash. I had shipped a debug view and called it
+machine-verified.
+
+**The part that matters is that I had an instrument pointed straight at this and
+misread it.** I sampled the canvas, got **42,421 non-black pixels of 49,152**, and
+concluded "the renderer works." Typography lights pixels too. That is **INV-13
+in its purest form** — the proxy was cheap to compute *because* it had dropped the
+hard part of the task, and having measured something I stopped looking. Worse, I
+had just written a self-congratulatory entry about finding a hole in INV-6 while
+the renderer that entry was defending was drawing letters.
+
+The `palette` conformance check is complicit and should be fixed at the fleet
+level: it passes on `!!(g && (g.TI || g.game))` with the detail string reading
+**`assumed by inspection`**. It has never looked at a pixel on any rung.
+
+### What the repair turned up
+
+**1. Sprites.** Sixteen 8×8 monochrome patterns — one colour per sprite, which is
+what the TMS9918A actually enforced (A-33), so the constraint is authentic rather
+than an excuse. Trees, stumps, skunks, snakes, bats, fire, bear, lion, vulture,
+ram, snowman, climber, rock, avalanche, icefall, summit flag.
+
+**2. Two of those bitmaps were malformed — 60 cells instead of 64.** `stump` and
+`snake` had short strings, so their rows wrapped and they rendered as garbage.
+Found by *measuring the pattern lengths*, not by squinting at them.
+
+**3. The terrain hash was broken, and that is why the mountain was a flat wash.**
+`(r*73856093) ^ (c*19349663)` with one shift-xor loses precision on the multiplies
+and never avalanches. Measured `hash(8, 0..7)`: **0.138 0.133 0.131 0.126 0.155
+0.152 0.148 0.169** — a 0.04 spread where 0..1 was assumed. Downstream, the relief
+noise was **0.232 across an entire row** — a constant. There was nothing to shade,
+so nothing looked like ground. Replaced with a proper 32-bit mixer (`Math.imul`,
+two rounds): range now 0.06–0.84, sd 0.157.
+
+Sequence worth keeping: **the picture told me something was wrong; the numbers
+told me what.** I first tried a "smarter" noise function and got vertical stripes,
+i.e. guessed twice. Probing the hash distribution ended it in one step. When output
+looks wrong, instrument the input rather than iterating on the output.
+
+**4. Hazard density halved** (.12→.30 became .055→.16). At the old rate roughly
+every third cell held a hazard, which means there is no clean ground to route
+through — so the wrap-around (A6) and the graded step penalties (A10) both stop
+being decisions. Everything a hazard is the same as nothing a hazard.
+
+### Two permanent checks added, because a lesson with no check is a preference
+
+- **`spriteIntegrity`** — every hazard, falling class, the climber and the flag
+  must have a pattern of exactly 64 cells, at least 6 lit pixels, and a bitmap
+  distinct from every other. This fails on characters-instead-of-sprites, on
+  malformed strings, and on blanks. It is the check whose absence let v1 pass 24/24.
+- **`terrainRelief`** — the relief noise must span a real range, carry real
+  variance, and **differ between neighbouring cells**. A smooth gradient with no
+  local variation would pass a naive range test and still render as a wash.
+
+Suite now **26/26**, CONFORMANT 11/11 (+1 n/a), docs clean.
+
+### Still weak — named, not hidden
+
+- The **low forest band is monotone** compared to the rock and snow bands; below
+  ~800 m it is a green field with faint contours.
+- **Skunks are white blobs** and visually dominate a green slope. Monochrome
+  sprites make a black-with-white-stripe skunk impossible without burning a second
+  sprite, which is the authentic 1982 trade — but the colour choice is mine.
+- The art is **functional, not charming.** It reads correctly; it has no character.
+- **I have now been wrong twice about this build's readiness**, both times in the
+  direction of over-claiming. Weight the tests accordingly: they cover mechanics
+  well and aesthetics barely.
+
+### The invariant candidate, now much stronger — still Daniel's call
+
+Earlier this session I proposed *"a state handle doesn't cover the renderer."* The
+letters incident sharpens it into something bigger:
+
+> **A verification suite measures the axis it was built along, and silence on every
+> other axis reads exactly like success.** 24 green mechanical tests coexisted with
+> a game that had no graphics at all — not because any test was wrong, but because
+> no test was *about* that. The canvas sample felt like visual verification while
+> measuring luminance, which is what made it dangerous: an instrument pointed near
+> the right question answers the wrong one confidently.
+
+INV-9 says tests and playtest are different oracles. This says something narrower
+and nastier: **you can have an instrument, aim it at the artifact, read it
+correctly, and still learn nothing about the thing you were worried about.**
