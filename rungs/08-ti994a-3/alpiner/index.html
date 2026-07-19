@@ -117,6 +117,56 @@ const P={
   icefall:  'XXXXXXXXXXXXXXXX.XXXXXX..XXXXXX...XXXX....XXXX.....XX.......X...',
   flag:     '..X.......XXXX....XXXXX...XXXX....X.......X.......X.......X.....'
 };
+/* 16x16 patterns. The TMS9918A supported 16x16 sprites and a 2x magnification
+   bit, and Alpiner's climber is plainly a big sprite in the reference shot, so
+   the hero and the large animals get the bigger cell. */
+const P16={
+  /* climber: head, pack, torso, two legs mid-stride */
+  climber:
+    '......XXXX......'+
+    '.....XXXXXX.....'+
+    '.....XX..XX.....'+
+    '.....XXXXXX.....'+
+    '......XXXX......'+
+    '...XXXXXXXXXX...'+
+    '..XXXXXXXXXXXX..'+
+    '.XXXXXXXXXXXXXX.'+
+    '.XX.XXXXXXXX.XX.'+
+    '.XX.XXXXXXXX.XX.'+
+    '....XXXXXXXX....'+
+    '....XXX..XXX....'+
+    '....XX....XX....'+
+    '...XXX....XXX...'+
+    '..XXX......XXX..'+
+    '.XXX........XXX.',
+  /* a big quadruped — the bear/lion/ram silhouette class */
+  beast:
+    '................'+
+    '.XX..........XX.'+
+    '.XXX........XXX.'+
+    '..XXXXXXXXXXXX..'+
+    '.XXXXXXXXXXXXXX.'+
+    'XXXXXXXXXXXXXXXX'+
+    'XXX.XXXXXXXX.XXX'+
+    'XXXXXXXXXXXXXXXX'+
+    'XXXXXXXXXXXXXXXX'+
+    '.XXXXXXXXXXXXXX.'+
+    '..XXXXXXXXXXXX..'+
+    '..XX.XX..XX.XX..'+
+    '..XX.XX..XX.XX..'+
+    '..XX.XX..XX.XX..'+
+    '.XXX.XXX.XXX.XXX'+
+    '................'
+};
+function sprite16(name,col){
+  const k='16'+name+'|'+col;
+  if(SPR[k])return SPR[k];
+  const c=document.createElement('canvas');c.width=16;c.height=16;
+  const g=c.getContext('2d');g.fillStyle=TI[col]||col;
+  const pat=P16[name]||'';
+  for(let i=0;i<256;i++)if(pat[i]==='X')g.fillRect(i%16,(i/16)|0,1,1);
+  SPR[k]=c;return c;
+}
 /* Pre-rendered into little canvases, one per (sprite, colour). */
 const SPR={};
 function sprite(name,col){
@@ -155,7 +205,29 @@ const HAZ={
   snowman:   {pen:-1, col:'white',       ch:'Y'}   /* -1 = crash to the bottom */
 };
 const GROUND=['stump','skunk','snake','bat','fire','bear','lion','vulture','ram'];
-const COLS=32, VIEW_ROWS=24, CELL=8;
+const COLS=32, VIEW_ROWS=18, CELL=8;   /* 18 rows of play, 48px info panel below */
+const PANEL_Y=VIEW_ROWS*CELL;
+/* The mountain is a SHAPE in sky, not a full-screen texture — the reference
+   gameplay shot shows blue sky around a silhouette. It runs full width for most
+   of the climb (which is what keeps the sourced wrap-around meaningful, A6) and
+   narrows to a peak over the top stretch. */
+function halfWidth(r){
+  const frac=1-r/G.rows;                 /* 0 at the bottom, 1 at the summit */
+  if(frac<.68)return 99;                 /* full width: wrap-around is live */
+  const t=(frac-.68)/.32;                /* 0..1 across the summit stretch */
+  return Math.max(3,Math.round(16-t*12));
+}
+function isRock(r,c){
+  const hw=halfWidth(r);
+  if(hw>=16)return true;
+  return c>=16-hw&&c<=16+hw;
+}
+/* A ledge is a walkable shelf — drawn bright with a dark lip, the stacked-
+   platform look of the original. Structural for the eye, not for traversal. */
+function isLedge(r,c){
+  if(!isRock(r,c))return false;
+  return hash(r*3+1,(c>>1))>.52&&(r%2===0);
+}
 const START_LIVES=4;                            /* 3 reserve boots + 1 on screen */
 const STEP_MS=110;                              /* input repeat rate [AUTHORED] */
 const STILL_MS=260;                             /* "not moving" threshold, A-31 */
@@ -296,7 +368,8 @@ function generate(seed){
    Trees block; everything else is passable at a cost. Wrap-around is legal (A6). */
 function climbable(grid,rows){
   const seen=new Set();const stack=[];
-  for(let c=0;c<COLS;c++)if(grid[rows-1][c]!=='tree'){stack.push([c,rows-1]);seen.add(c+','+(rows-1));}
+  for(let c=0;c<COLS;c++)if(grid[rows-1][c]!=='tree'&&isRock(rows-1,c)){
+    stack.push([c,rows-1]);seen.add(c+','+(rows-1));}
   while(stack.length){
     const [c,r]=stack.pop();
     if(r===0)return true;
@@ -304,6 +377,7 @@ function climbable(grid,rows){
       if(!dc&&!dr)continue;
       const nr=r+dr;if(nr<0||nr>=rows)continue;
       const nc=(c+dc+COLS)%COLS;                /* cylinder */
+      if(!isRock(nr,nc))continue;               /* sky is not a route */
       if(grid[nr][nc]==='tree')continue;
       const k=nc+','+nr;if(seen.has(k))continue;
       seen.add(k);stack.push([nc,nr]);
@@ -439,6 +513,7 @@ function tryStep(dc,dr){
   const nr=G.row+dr;
   if(nr<0||nr>=G.rows)return false;
   const nc=(G.col+dc+COLS)%COLS;                 /* A6: cylinder */
+  if(!isRock(nr,nc))return false;                /* you cannot step into sky */
   if(G.grid[nr][nc]==='tree')return false;       /* trees block, cost nothing */
   G.col=nc;G.row=nr;                             /* exact assignment */
   if(dr<0){G.steps++;G.score+=basePoints();}
@@ -537,37 +612,45 @@ function mix(hex1,hex2,t){
   return 'rgb('+Math.round(A[0]+(B[0]-A[0])*t)+','+Math.round(A[1]+(B[1]-A[1])*t)+','+
     Math.round(A[2]+(B[2]-A[2])*t)+')';
 }
+const SKY='#4a86d8', SKY_HI='#6ba2e8';
 function drawFace(){
+  /* sky first — the mountain is a shape sitting in it */
+  cx.fillStyle=SKY;cx.fillRect(0,0,256,PANEL_Y);
+  cx.fillStyle=SKY_HI;cx.fillRect(0,0,256,24);
   for(let vr=0;vr<VIEW_ROWS;vr++){
     const r=G.camera+vr;if(r<0||r>=G.rows)continue;
     const b=faceBand(r);
     for(let c=0;c<COLS;c++){
-      /* two octaves of relief — broad slabs plus finer break-up */
+      if(!isRock(r,c))continue;                 /* leave the sky showing */
       const n=vnoise(r,c,7)*.68+vnoise(r,c,2.5)*.32;
-      /* the face is ROUND: brighter down the centre line, falling off toward
-         the shoulders, so the screen reads as a curved flank rather than a wall */
-      const dx=Math.abs(((c+16)%COLS)-16)/16;
-      const round=1-dx*dx*.55;
-      const lum=Math.max(0,Math.min(1,(n*.85+.15)*round));
-      cx.fillStyle=lum<.5?mix(b.dark,b.base,lum*2):mix(b.base,b.lite,(lum-.5)*2);
-      cx.fillRect(c*CELL,vr*CELL,CELL,CELL);
-      /* contour seams where the relief crosses a level — reads as strata on
-         rock and as wind-scour on snow */
-      const nAbove=vnoise(r-1,c,7)*.68+vnoise(r-1,c,2.5)*.32;
-      if(Math.floor(n*9)!==Math.floor(nAbove*9)){
-        cx.fillStyle=b.dark;cx.globalAlpha=.5;
-        cx.fillRect(c*CELL,vr*CELL,CELL,1);cx.globalAlpha=1;
+      const ledge=isLedge(r,c);
+      const x=c*CELL, y=vr*CELL;
+      if(ledge){
+        /* a bright shelf with a dark lip — the stacked-platform read */
+        cx.fillStyle=b.lite;cx.fillRect(x,y,CELL,CELL);
+        cx.fillStyle='#f4f7fc';cx.fillRect(x,y+1,CELL,3);
+        cx.fillStyle='#1a1d26';cx.fillRect(x,y,CELL,1);
+        cx.fillStyle=b.dark;cx.fillRect(x,y+CELL-2,CELL,2);
+      } else {
+        const lum=Math.max(0,Math.min(1,n*.9+.1));
+        cx.fillStyle=lum<.5?mix(b.dark,b.base,lum*2):mix(b.base,b.lite,(lum-.5)*2);
+        cx.fillRect(x,y,CELL,CELL);
+        const nAbove=vnoise(r-1,c,7)*.68+vnoise(r-1,c,2.5)*.32;
+        if(Math.floor(n*9)!==Math.floor(nAbove*9)){
+          cx.fillStyle=b.dark;cx.globalAlpha=.5;
+          cx.fillRect(x,y,CELL,1);cx.globalAlpha=1;
+        }
       }
-      /* crevasses: only on the high ground, and only in the deep folds */
-      if(b.rock&&n<.14){cx.fillStyle='#20283a';
-        cx.fillRect(c*CELL+2,vr*CELL,3,CELL);}
+      /* dark edge wherever rock meets sky, so the silhouette reads crisply */
+      if(!isRock(r,c-1)){cx.fillStyle='#141821';cx.fillRect(x,y,1,CELL);}
+      if(!isRock(r,c+1)){cx.fillStyle='#141821';cx.fillRect(x+CELL-1,y,1,CELL);}
+      if(!isRock(r-1,c)){cx.fillStyle='#141821';cx.fillRect(x,y,CELL,1);}
     }
-    /* the summit ridge, with sky above it */
     if(r===0){
-      cx.fillStyle='#0a0f1e';cx.fillRect(0,vr*CELL-CELL,256,CELL);
-      cx.fillStyle='#ffffff';cx.fillRect(0,vr*CELL,256,CELL);
-      cx.fillStyle='#cfd8ea';cx.fillRect(0,vr*CELL+6,256,2);
-      blit('flag','mediumRed',15*CELL,vr*CELL);
+      const hw=halfWidth(0);
+      cx.fillStyle='#ffffff';cx.fillRect((16-hw)*CELL,vr*CELL,(hw*2+1)*CELL,CELL);
+      cx.fillStyle='#141821';cx.fillRect((16-hw)*CELL,vr*CELL,(hw*2+1)*CELL,1);
+      blit('flag','mediumRed',16*CELL,vr*CELL-CELL);
     }
   }
 }
@@ -576,53 +659,68 @@ function draw(){
   if(G.state==='title'){drawTitle();return;}
   if(G.state==='entry'){drawEntry();return;}
   drawFace();
+  /* the big animals get the 16x16 cell — they are the threats you must read
+     from across the screen, and at 8x8 a bear and a stump were the same size */
+  const BIG={bear:1,lion:1,ram:1,snowman:1};
   for(let vr=0;vr<VIEW_ROWS;vr++){
     const r=G.camera+vr;if(r<0||r>=G.rows)continue;
     for(let c=0;c<COLS;c++){
-      const h=G.grid[r][c];
-      if(h)blit(h,HAZ[h].col,c*CELL,vr*CELL);
+      const h=G.grid[r][c];if(!h)continue;
+      if(BIG[h])cx.drawImage(sprite16('beast',HAZ[h].col),c*CELL-4,vr*CELL-8);
+      else blit(h,HAZ[h].col,c*CELL,vr*CELL);
     }
   }
   for(const f of G.falling){
     if(f.y<G.camera-1||f.y>G.camera+VIEW_ROWS)continue;
     blit(f.t,FALL[f.t].col,f.col*CELL,(f.y-G.camera)*CELL);
   }
-  /* the climber: a dark outline pass under the sprite so he reads against both
-     white snow and dark forest — he is the one thing that must never be lost */
+  /* the climber, 16x16 and drawn last so nothing can cover him */
   const cyPix=(G.row-G.camera)*CELL;
-  cx.fillStyle='rgba(0,0,0,.55)';cx.fillRect(G.col*CELL,cyPix,CELL,CELL);
-  blit('climber','cyan',G.col*CELL,cyPix);
+  cx.drawImage(sprite16('climber','black'),G.col*CELL-4+1,cyPix-8+1);
+  cx.drawImage(sprite16('climber','cyan'),G.col*CELL-4,cyPix-8);
   drawHud();
 }
+/* The info panel sits at the BOTTOM on a tan field — the layout of the original,
+   which puts LEVEL / CURRENT ELEV on the left and the score column on the right. */
 function drawHud(){
-  cx.fillStyle='rgba(0,0,0,.75)';cx.fillRect(0,0,256,18);
-  cx.fillStyle=TI.white;cx.font='8px monospace';cx.textAlign='left';
-  cx.textBaseline='top';
-  cx.fillText(mountain().name,3,2);
-  cx.fillText('SCORE '+G.score,3,10);
+  cx.fillStyle='#d4c154';cx.fillRect(0,PANEL_Y,256,192-PANEL_Y);
+  cx.fillStyle='#8f8033';cx.fillRect(0,PANEL_Y,256,2);
+  cx.fillStyle='#1a1d26';
+  cx.font='8px monospace';cx.textAlign='left';cx.textBaseline='top';
+  const y=PANEL_Y+5;
+  cx.fillText('MOUNTAIN',4,y);
+  cx.fillText('LEVEL',4,y+11);
+  cx.fillText('CURRENT ELEV',4,y+22);
+  cx.fillText(mountain().name,74,y);
+  cx.fillText(String(G.level+1),74,y+11);
+  cx.fillText(elevation()+' M',74,y+22);
   cx.textAlign='right';
-  cx.fillText('LV'+(G.level+1)+'  x'+G.lives,253,2);
-  cx.fillText(elevation()+'m / '+mountain().m+'m',253,10);
+  cx.fillText('SCORE',214,y);
+  cx.fillText('CLIMBERS',214,y+11);
+  cx.fillText('SEC',214,y+22);
+  cx.fillText(String(G.score),252,y);
+  cx.fillText(String(G.lives),252,y+11);
   /* the timer: shown FROZEN-coloured while moving, so A-31 is legible */
   const moving=(G.now-G.lastStepAt)<STILL_MS;
-  cx.textAlign='center';
-  cx.fillStyle=moving?TI.mediumGreen:(G.timer<15?TI.mediumRed:TI.lightYellow);
-  cx.fillText((moving?'TIME HELD ':'TIME ')+Math.ceil(G.timer),128,2);
+  cx.fillStyle=moving?'#1c6b24':(G.timer<15?'#a01c17':'#1a1d26');
+  cx.fillText((moving?'HELD ':'')+Math.ceil(G.timer),252,y+22);
   if(G.testScore){cx.fillStyle=TI.magenta;cx.textAlign='center';
-    cx.fillText('TEST',128,10);}
+    cx.fillText('TEST',128,y+22);}
   /* A2: the cue's VISUAL half — drawn whether or not speech is enabled */
   if(G.cue){
     const c=CUES[G.cue];
-    cx.fillStyle='rgba(0,0,0,.8)';cx.fillRect(28,168,200,16);
+    cx.fillStyle='rgba(0,0,0,.82)';cx.fillRect(28,PANEL_Y-22,200,16);
     cx.fillStyle=c.voice==='f'?TI.magenta:TI.cyan;
     cx.textAlign='center';cx.textBaseline='middle';
-    cx.fillText(c.text,128,177);
+    cx.fillText(c.text,128,PANEL_Y-14);
   }
   if(G.msg&&G.now<G.msgUntil){
-    cx.fillStyle=TI.lightYellow;cx.textAlign='center';cx.textBaseline='middle';
-    cx.fillText(G.msg,128,150);
+    cx.fillStyle='#ffffff';cx.textAlign='center';cx.textBaseline='middle';
+    cx.fillStyle='rgba(0,0,0,.7)';cx.fillRect(28,PANEL_Y-46,200,16);
+    cx.fillStyle=TI.lightYellow;cx.fillText(G.msg,128,PANEL_Y-38);
   }
-  if(G.paused){cx.fillStyle=TI.white;cx.textAlign='center';cx.fillText('PAUSED',128,96);}
+  if(G.paused){cx.fillStyle=TI.white;cx.textAlign='center';cx.textBaseline='middle';
+    cx.fillText('PAUSED',128,72);}
 }
 function drawTitle(){
   cx.fillStyle=TI.cyan;cx.font='16px monospace';cx.textAlign='center';
