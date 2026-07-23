@@ -2,6 +2,23 @@
 
 *Append-only. Wrong turns stay in.*
 
+- **2026-07-23 (later) — first push shipped THREE visual regressions; Daniel caught all
+  three from one screenshot. Fixed same sitting.** The wrong turn, on record:
+  (1) **Pits invisible** — I painted a tan "horizon dune band" behind the whole play
+  area, so a hole in the ground revealed tan = the ground colour. Holes read as solid
+  floor. Fix: blue sky all the way down (SMB's trick) — a pit now reveals sky and is
+  unmistakable. (2) **Moses blended** into the orange ground and the tan backdrop — his
+  tan tunic was the problem. Fix: white robe + red sash + dark staff (high contrast on
+  both ground and sky; also the right look for a shepherd). (3) **Platforms too high** —
+  I'd shoved them to rows 7–8 (running-jump-peak) dodging UX-37, which read as "just
+  moved the blocks up, some unreachable." Fix: rows 9–10, and placed ONLY in quiet
+  stretches so a platform is never a ceiling over a foe/gap jump — which is the real
+  UX-37 rule, not "no low platforms anywhere." The P7 bot re-exposed the trap twice
+  (a platform, then a staircase, each crammed just before a foe) until spacing was
+  clean. Suite back to 9/9. Lesson (again): a machine suite proves winnable + correct;
+  it is blind to "reads as a hole," "blends," "looks unreachable" — those need the eye,
+  and this is the rung-8 visual-criteria gap biting on rung 7.
+
 - **2026-07-23 — SECOND PLAYTEST (Daniel, at the office; showing a colleague) → build
   unfrozen, six changes shipped, TWO real bugs surfaced by them.** His report:
   (1) Moses needs more detail + a visible staff; (2) ground too flat; (3) the single
