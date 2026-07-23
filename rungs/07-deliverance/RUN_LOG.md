@@ -2,6 +2,29 @@
 
 *Append-only. Wrong turns stay in.*
 
+- **2026-07-23 (playtest #3, Daniel) — five more calls, all shipped; SMB block art
+  researched at his ask.**
+  - **Floating manna too high** → dropped the non-platform trails to row 12 (grab by
+    walking, not a jump). Platform manna stays on its platform.
+  - **"Can't type your name"** → the entry screen only accepted arrow-scrolling; it now
+    accepts real TYPING (letter/digit fills the slot + advances, Backspace erases, Enter
+    submits). Verified end to end (over→entry→type "DAN"→saved→title). The screen was
+    always *reachable* — the miss was input method, not flow.
+  - **No enemies on the last level** → added Egyptian soldiers (stompable) to 1-3 and
+    made the chariot chase VISIBLE: it now enters from the left edge and paces the runner
+    (0x2800 = run speed) instead of spawning behind and being culled — a pursuer you
+    outrun by moving and shed at the gaps. (The playtest-#1 "chariots invisible" finding
+    is now addressed by making them a paced, on-screen threat rather than a fast one.)
+  - **Blocks looked rudimentary / night staircase was a "blob of steps"** → the night
+    ground was STONE-on-STONE with no contrast. Rewrote block art SMB-style: BRICK gets
+    staggered courses + a lit top edge; STONE splits into a flatter textured GROUND vs a
+    solid BLOCK with bevel (light top-left, dark bottom-right) + corner studs. Staircases
+    now read as distinct 3-D blocks on both palettes.
+  - **SMB research** (his ask): confirmed the overworld brick is brown (~#9C4A00) with a
+    staggered-course mortar pattern + lit top edge, and solid blocks carry a beveled,
+    corner-studded look — which is the direction the new art takes. Sources in the chat.
+  - Suite 9/9 (level 3 winnable with the new soldiers + chariots). Push is Daniel's.
+
 - **2026-07-23 (later) — first push shipped THREE visual regressions; Daniel caught all
   three from one screenshot. Fixed same sitting.** The wrong turn, on record:
   (1) **Pits invisible** — I painted a tan "horizon dune band" behind the whole play

@@ -100,7 +100,7 @@ const LEVELS=[
   plat:[[54,9,3],[98,10,4],[134,9,3],[186,10,4]],
   block:[[62,12,1,1],[63,11,1,2],[64,10,1,3],       // ascending stone stair
          [142,12,1,1],[143,11,1,2]],                // a short step
-  manna:[[10,11,3],[54,8,3],[98,9,4],[118,11,3],[134,8,3],[186,9,4],[210,11,3]],
+  manna:[[10,12,3],[54,8,3],[98,9,4],[118,12,3],[134,8,3],[186,9,4],[210,12,3]],
   foes:[[30,'task'],[46,'task'],[86,'task'],[124,'task'],[172,'task'],[216,'task']],
   chk:118, goal:230},
  {name:'THE NINTH PLAGUE', cols:236, palset:'night', groundTile:STONE,
@@ -109,14 +109,16 @@ const LEVELS=[
   gaps:[[30,3],[58,3],[84,2],[110,4],[146,3],[178,4],[210,2]],
   plat:[[42,9,3],[96,10,4],[132,9,3],[192,10,4]],
   block:[[50,12,1,1],[51,11,1,2],[52,10,1,3]],
-  manna:[[16,11,3],[42,8,3],[96,9,4],[120,11,3],[132,8,3],[164,11,3],[192,9,4]],
+  manna:[[16,12,3],[42,8,3],[96,9,4],[120,12,3],[132,8,3],[164,12,3],[192,9,4]],
   foes:[[36,'serp'],[72,'task'],[78,'serp'],[122,'task'],[140,'serp'],[166,'task'],[202,'serp']],
   chk:118, goal:230},
  {name:'THE RED SEA', cols:256, palset:'sea', groundTile:SAND,
   gaps:[[80,2],[120,2],[160,3],[200,2]],
   plat:[], block:[],
   manna:[[70,12,3],[100,12,3],[140,12,3],[180,12,3],[220,12,3]],
-  foes:[],
+  // Egyptian soldiers stranded in the corridor (stompable) + the chariot chase from
+  // behind (see stepCore) — the last level has enemies now.
+  foes:[[92,'task'],[140,'task'],[178,'task']],
   chk:130, goal:248,
   sea:{wall:60, trigger:57, end:237}}
 ];
@@ -325,8 +327,10 @@ function stepCore(inp){
   spawnAhead();
   const L=G.levelSet[G.level];
   if(G.parted){G.seaFrames++;
-    if(G.seaFrames%300===120&&G.ents.filter(e=>e.t==='chariot').length<3){
-      G.ents.push({x:G.camX-40,y:12*T-16,t:'chariot',vx:0x1E80,vy:0,born:G.frame,alive:true});
+    if(G.seaFrames%240===60&&G.ents.filter(e=>e.t==='chariot').length<3){
+      // enter from the left edge (visible), pace the runner (0x2800 = run speed) — a
+      // pursuer that never quite catches a mover but eats a dawdler; shed at the gaps.
+      G.ents.push({x:G.camX-8,y:12*T-16,t:'chariot',vx:0x2800,vy:0,born:G.frame,alive:true});
       sfx('chariot');}}
   for(const e of G.ents)stepEnt(e);
   // --- interactions
@@ -461,16 +465,16 @@ addEventListener('keyup',e=>{
 function entryKey(k){
   const en=G.entry;
   if(en.latch){if(k===' '||k==='Enter')return;en.latch=false;} // INV-15: held buttons
-  if(k==='ArrowUp'||k==='w'){const i=(LETTERS.indexOf(en.name[en.pos])+1)%LETTERS.length;
-    en.name[en.pos]=LETTERS[i];}
-  if(k==='ArrowDown'||k==='s'){const i=(LETTERS.indexOf(en.name[en.pos])+LETTERS.length-1)%LETTERS.length;
-    en.name[en.pos]=LETTERS[i];}
-  if(k==='ArrowLeft'||k==='a')en.pos=Math.max(0,en.pos-1);
-  if(k==='ArrowRight'||k==='d')en.pos=Math.min(2,en.pos+1);
-  if(k==='Enter'||k===' '){
-    if(en.pos<2)en.pos++;
-    else{HiScore.add(en.name.join(''),G.score);G.state='title';}
-  }
+  // TYPE your name: any letter/digit fills the current slot and advances the cursor
+  if(k&&k.length===1){const u=k.toUpperCase();
+    if(LETTERS.indexOf(u)>=0){en.name[en.pos]=u; if(en.pos<2)en.pos++; return;}}
+  if(k==='Backspace'){en.name[en.pos]='A'; if(en.pos>0)en.pos--; return;}
+  // arrows still work: up/down scroll a letter, left/right move the cursor
+  if(k==='ArrowUp'){const i=(LETTERS.indexOf(en.name[en.pos])+1)%LETTERS.length;en.name[en.pos]=LETTERS[i];}
+  if(k==='ArrowDown'){const i=(LETTERS.indexOf(en.name[en.pos])+LETTERS.length-1)%LETTERS.length;en.name[en.pos]=LETTERS[i];}
+  if(k==='ArrowLeft')en.pos=Math.max(0,en.pos-1);
+  if(k==='ArrowRight')en.pos=Math.min(2,en.pos+1);
+  if(k==='Enter'){HiScore.add(en.name.join(''),G.score);G.state='title';}   // submit
 }
 /* touch: edge buttons + swivel stick (left half steer, right half = jump) */
 const touch={left:false,right:false,jump:false};
@@ -540,11 +544,27 @@ function drawTile(id,sx,sy,pal,c,r){
     if(id===SAND)rect(sx,sy+8+((c+(G.frame>>6))%4),T,1,pal.gnd2); // dune ripple drift
     else rect(sx+3+((h>>9)%8),sy+10,3,1,pal.gnd2);            // earth clod
   }
-  else if(id===BRICK){rect(sx,sy,T,T,pal.brick);
-    for(let i=0;i<2;i++)rect(sx,sy+i*8,T,1,PAL.black);
-    rect(sx+8,sy,1,8,PAL.black);rect(sx+4,sy+8,1,8,PAL.black);rect(sx+12,sy+8,1,8,PAL.black);}
-  else if(id===STONE){rect(sx,sy,T,T,pal.stone);rect(sx+1,sy+1,T-2,T-2,PAL.dgray);
-    rect(sx+2,sy+2,4,4,pal.stone);}
+  else if(id===BRICK){                                    // SMB brick: staggered courses
+    rect(sx,sy,T,T,pal.brick);
+    rect(sx,sy,T,1,PAL.sand);                             // lit top edge of the course
+    rect(sx,sy+7,T,1,PAL.black); rect(sx,sy+15,T,1,PAL.black);  // horizontal mortar
+    rect(sx+7,sy+1,1,6,PAL.black);                        // upper course: one vertical
+    rect(sx+3,sy+8,1,7,PAL.black); rect(sx+11,sy+8,1,7,PAL.black); // lower course: offset
+  }
+  else if(id===STONE){
+    rect(sx,sy,T,T,pal.stone);
+    if(r>=13){                                            // stone GROUND — flatter + texture
+      const h=((c*928371+r*1237)>>>0);
+      rect(sx,sy,T,1,PAL.gray);                           // faint surface line
+      rect(sx+(h%12),sy+6+((h>>3)%7),2,2,PAL.black);
+      rect(sx+((h>>5)%13),sy+3+((h>>7)%9),1,3,PAL.black);
+    }else{                                                // solid BLOCK — SMB hard-block:
+      rect(sx,sy,T,1,PAL.white); rect(sx,sy,1,T,PAL.white);         // top+left highlight
+      rect(sx,sy+T-1,T,1,PAL.black); rect(sx+T-1,sy,1,T,PAL.black); // bottom+right shadow
+      rect(sx+2,sy+2,2,2,PAL.black); rect(sx+T-4,sy+2,2,2,PAL.black);      // corner studs
+      rect(sx+2,sy+T-4,2,2,PAL.black); rect(sx+T-4,sy+T-4,2,2,PAL.black);
+    }
+  }
   else if(id===WATER){rect(sx,sy,T,T,PAL.mblue);
     rect(sx,sy+((G.frame>>3)+r)%8,T,2,PAL.lblue);}
 }
@@ -701,7 +721,7 @@ function drawEntry(){
   for(let i=0;i<3;i++){
     text(en.name[i],108+i*16,110,i===en.pos?PAL.yellow:PAL.white,14);
     if(i===en.pos&&(G.frame>>4)%2)rect(108+i*16,128,10,2,PAL.yellow);}
-  text('UP/DOWN LETTER  ENTER NEXT',62,150,PAL.gray);
+  text('TYPE YOUR NAME  —  ENTER TO SUBMIT',44,150,PAL.gray);
 }
 /* ====================== sim contract (bots drive real inputs only) ======== */
 const sim={
@@ -915,7 +935,7 @@ window.__deliverance={
   get state(){return G.state;},
   get score(){return G.score;},
   game:G, sim, HiScore, LETTERS, startEntryOrTitle, Feedback, tests,
-  newGame, PHYS,
+  newGame, PHYS, entryKey,
   debug:{ents:()=>G.ents.map(e=>({t:e.t,x:e.x,y:e.y,age:G.frame-e.born,alive:e.alive}))}
 };
 </script>
