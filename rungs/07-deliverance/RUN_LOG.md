@@ -2,6 +2,42 @@
 
 *Append-only. Wrong turns stay in.*
 
+- **2026-07-23 — SECOND PLAYTEST (Daniel, at the office; showing a colleague) → build
+  unfrozen, six changes shipped, TWO real bugs surfaced by them.** His report:
+  (1) Moses needs more detail + a visible staff; (2) ground too flat; (3) the single
+  solid-colour sky is weird — want recurring pyramids behind; (4) jumps/obstacles are
+  repetitive, same challenge every time; (5) unclear what manna does / whether the
+  spoil is still a thing — "just make it do what Mario coins do, 100 = a life";
+  (6) leaderboard reads empty. **Done:**
+  - **Manna → coins (UX-40 supersedes UX-35).** Spoilage retired — its own re-pick
+    trigger had fired (Daniel read the fade as noise, not decay). Manna now persists,
+    draws as a spinning gold wafer, 100 gathered = +1 life (wraps 0–99). P8 rewritten
+    to check the coin-life mechanic; the spoil-timing sub-test is gone.
+  - **Leaderboard was never broken** — `HiScore.add` persists fine (verified live in
+    localStorage). It just started empty and only fills on manual initials entry, so it
+    *read* broken. Fix = seed a default board of Deliverers (classic arcade move); real
+    scores sort in over the top.
+  - **Backdrop**: banded sky + sun/blood-moon + horizon dune band + two-layer parallax
+    pyramids per palette (day tan / night navy silhouettes / sea brown). Ground gained a
+    surface crust, deterministic speckle/striations, dune ripples on sand. Moses redrawn:
+    grey hair+beard, red mantle over a tan tunic, a defined rod with a crook and glint,
+    walk/jump poses. (Machine-rendered proof frames for all three worlds.)
+  - **Level variety**: levels 1–2 re-authored with stone staircases, varied gap widths
+    (2–4), elevated reward platforms at rows 7–8 (UX-37-safe), and mixed foe placement.
+  - **BUG #1 — real determinism defect, exposed by the harder level (not a test flake).**
+    `jumpTier` / `jumpHeldPrev` / `airMax` survived `newGame`/`loadLevel`. A held-jump
+    flag leaking across the reset edge-suppressed the first jump on one run only (the
+    INV-15 held-button mechanism biting the *reset* path) → P3 divergence. Easier HEAD
+    levels never triggered it; my level did. Fix: reset all per-life physics state in
+    `loadLevel`. Now byte-identical at 1500/3000 regardless of how the last life ended.
+  - **BUG #2 — P5's own fault (INV-3), also exposed by the shift.** The wall-pass
+    assertion used a float threshold `x>374.01` that caught a harmless <1px walk-decel
+    oscillation against the wall; HEAD passed only by sample-phase luck. Trace proved the
+    player box stays wholly in col 23 (never enters the wall's col 24) — no tunnel. Fixed
+    the assertion to the engine's own pixel convention (`floor((x+PW-1)/T) >= 24`).
+  - **Suite: 9/9 ALL GREEN.** Push is Daniel's (publishing gate). Chariot invisibility
+    (1-3, logged below) still un-addressed — a separate call.
+
 - **2026-07-18 ~20:30 — FIRST HUMAN PLAYTEST (Daniel): completed the world first
   sitting, score 14,790. First finding, minutes after handoff: "Level 3 had no
   enemies."** Diagnosis confirmed and the honest part recorded: **the chariots are

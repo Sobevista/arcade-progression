@@ -64,8 +64,10 @@ pass against the table first, and each gets a RUN_LOG entry.
   bots cannot cheat) completes 1-1, 1-2, and 1-3 end to end; a seeded random-input
   firstTimer bot dies in 1-1. Both through `sim.step()` at speed.
 - **P8 Scoring audit:** manna +100, stomp +100/+200, clear bonus + time bonus — zero
-  arithmetic mismatches across an audited bot run (rung-6 precedent). Manna spoils
-  (despawns) 600 frames after entering the world [UX-35, Exodus 16] — timing exact.
+  arithmetic mismatches across an audited bot run (rung-6 precedent). **Manna acts as
+  coins [UX-40, supersedes UX-35 spoilage 2026-07-23]:** it persists, and every 100
+  gathered grants an extra life (counter wraps 0–99) — checked exact (100 gathers →
+  +1 life, wrap to 0).
 - **P9 Conformance:** `tools/conformance.js` fully green for `deliverance` (test hook,
   sim contract, hi-score table + storage key + derived-HI, initials entry, touch
   layout, swivel stick, feedback module [ASSUMED default per rung-6 precedent —
