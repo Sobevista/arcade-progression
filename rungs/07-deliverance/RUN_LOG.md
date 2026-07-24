@@ -2,6 +2,17 @@
 
 *Append-only. Wrong turns stay in.*
 
+- **2026-07-24 (Daniel) — MARKED MVP. The frozen-pending-playtest gate is CLOSED.**
+  Verdict after playtests #2–#3: *"it is tested enough. mark mvp… I can go back and play
+  with Deliverance because the basic concepts were working."* The NES scrolling-platformer
+  **bones are proven** — SMB physics transcribed from the disassembly, forward-only camera,
+  entity streaming, winnable + losable, the Red Sea set-piece. MVP = the genre bones work
+  with minimal replication error, **not** the polish; feel-tuning, Phase 2 (staff power-ups,
+  more worlds), and the stacked calls (T9 bar, feedback rollout, release gating) stay open
+  but do not block MVP. `releases.json` advertising remains Daniel's pacing call. Next rung:
+  Final Fantasy (JRPG, biblical twist), the first genre leap, built on the newly inscribed
+  fidelity laws INV-21/22.
+
 - **2026-07-23 (playtest #3, Daniel) — five more calls, all shipped; SMB block art
   researched at his ask.**
   - **Floating manna too high** → dropped the non-platform trails to row 12 (grab by

@@ -686,3 +686,44 @@ not an oversight. It should be revisited the moment either becomes true:
   **NEXT ACTION: Daniel's full playtest report → TESTIMONY-style fixes under
   prove-the-fix, then his push. The stacked calls unchanged (T9, feedback
   rollout, release gating for 3–7).**
+
+- **2026-07-23 — Playtest laps #2 and #3 ran and shipped** (commits `0b27d7a`,
+  `5321d42`, `f102b80`): coins-not-spoil (UX-40 manna-as-coins, supersedes the
+  spoilage model), parallax pyramids, a detailed Moses/Shepherd, ground texture,
+  level variety, seeded board; **level-3 chariots made visible** (the miss the
+  first lap caught), typeable name entry, SMB-style blocks, lower manna. Two real
+  bugs fixed each round. Logged in the rung RUN_LOG.
+
+- **2026-07-24 — DELIVERANCE MARKED MVP (Daniel's verdict). The frozen-pending-
+  playtest loop is CLOSED.** Daniel's call after playtests #2–#3: *"it is tested
+  enough. mark mvp… I can go back and play with Deliverance because the basic
+  concepts were working."* The verdict defines MVP for this whole progression:
+  **MVP = the genre bones work with minimal replication error, not the polish.**
+  Deliverance proved the NES scrolling-platformer bones (SMB physics transcribed
+  from the disassembly, forward-only camera, streaming, winnable+losable, the Red
+  Sea set-piece). Polish, feel-tuning, and later phases stay open but do not block
+  MVP. **Not blocking, carried forward:** the stacked calls (T9 bar, feedback
+  rollout to rungs 2–4, release gating — `releases.json` still advertises only
+  Invaders, Daniel's pacing call whether/when Deliverance joins the landing page);
+  Phase 2 scope (staff power-ups, more worlds, enemy variety); family playtest
+  rungs 4–7. None gate MVP.
+
+- **2026-07-24 — The two fidelity laws INSCRIBED (rung-8's debt paid before the
+  next rung).** Daniel approved them 2026-07-23; now in the repo: **INV-21** (for a
+  fidelity build, visual reference is a primary source, gathered before code) and
+  **INV-22** (a fidelity build isn't done until a side-by-side vs reference passes
+  on named visual attributes) — INVARIANTS.md detail + ledger; RESUME "How to work
+  here" now requires visual-first archaeology + visual SCOPE criteria; new
+  `rungs/_SCOPE_TEMPLATE.md` bakes in a mandatory "Visual fidelity — the side-by-
+  side gate" section. The `palette` conformance check still passes without
+  inspecting a pixel — flagged in INV-22 as an explicit human gate until fixed
+  (fleet follow-on).
+
+  **NEXT ACTION: RUNG 9 — FINAL FANTASY (biblical twist), the JRPG rung.** First
+  genre leap off the platformer. Built on the new laws: research-first with visual
+  reference (INV-21), SCOPE from the template with a side-by-side gate (INV-22).
+  The build plan follows the perfected pipeline — research → library the research →
+  extract the genre invariants (what made the JRPG epic) → build MVP proving the
+  fixes. North star (Daniel's): each genre's bones added to the trove drives toward
+  an "NES-genre generator" — the low-error skeleton of a genre on demand, not the
+  perfection.

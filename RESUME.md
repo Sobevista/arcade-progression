@@ -33,11 +33,17 @@ text on a screen.
   not recalled** — and write it into `ARCHAEOLOGY.md` along with a Suffering Ledger
   saying which constraints we keep and why. Rung 2 was built the other way round and
   shipped two mechanics wrong from confident memory. Research is cheap.
+  **And gather VISUAL reference — screenshots/video of the original — before any render
+  code (INV-21).** On a project whose deliverable is fidelity, an image is a primary
+  source and outranks prose; rung 8 skipped this and shipped letters for sprites.
 - **Build:** one HTML file per game, vanilla JS + Canvas, zero dependencies, no build
   step. Open by double-clicking. If that stops being true, something has gone wrong.
 - **Before building a rung:** write `SCOPE.md` first — what's under test, binary pass
   criteria checkable by something other than you, blast radius, abort condition. A
-  scope written afterwards always passes.
+  scope written afterwards always passes. **Start from `rungs/_SCOPE_TEMPLATE.md`**, and
+  the SCOPE **must name the visual attributes under test (palette, silhouette, sprite
+  scale, layout) with a side-by-side-against-reference gate (INV-22)** — a SCOPE with
+  zero visual criteria is how rung 8 was 26/27 green while the screen showed letters.
 - **While building:** append to `RUN_LOG.md` as you go. Wrong turns stay in. A log
   tidied afterwards is a press release.
 - **Verify by running it**, not by asserting it. Ship a read-only test hook

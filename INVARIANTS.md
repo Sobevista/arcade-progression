@@ -351,6 +351,47 @@ stale step *vector*; this one accumulates a stale step *sum*.
 
 ---
 
+## From rung 8 — ALPINER (2026-07-19) — the fidelity laws
+
+### INV-21 — When the deliverable is fidelity, visual reference is a primary source, gathered before code
+Alpiner v1 shipped with **letters standing in for sprites** — `T` for a tree, `s` for
+a skunk, `A` for the climber — and was called machine-verified. The proof was a pixel
+sample: the canvas lit 42,421 non-black pixels, so "the renderer works." **Typography
+lights pixels too** (INV-13: the proxy was cheap precisely because it dropped the hard
+part).
+
+**Earned:** the root cause, named honestly, was upstream of the code — the archaeology
+brief asked what the game *did* (mechanics, speech, hardware, authorship) and never
+asked what it **looks like**, on a project whose entire deliverable is fidelity. It took
+four round-trips with Daniel supplying reference screenshots before the look was even in
+the ballpark.
+
+**The invariant:** when a build's deliverable is replication, screenshots and video of
+the original are **primary sources and outrank prose**. They are gathered BEFORE any
+render code and cited in the archaeology like any other source. A fidelity build whose
+archaeology holds no visual reference is building the one thing it exists to get right,
+blind.
+
+### INV-22 — A fidelity build is not done until a side-by-side against reference passes on named attributes
+Alpiner's SCOPE had 26 machine-checkable criteria and **zero visual ones**, so nothing
+in the suite could fail on account of looking wrong — it read 26/27 green while the
+screen showed letters. A suite measures only the axis it was built along, and **silence
+on every other axis reads exactly like success** (INV-19's shape, pointed at the
+renderer).
+
+**Earned:** the `palette` conformance check made it worse — it passes on
+`!!(g.TI||g.game)` with the detail "assumed by inspection," and has never looked at a
+pixel on any rung. A fidelity project shipped a check *named* for the thing it never
+verified.
+
+**The invariant:** a fidelity build's SCOPE must **name the visual attributes under
+test** — palette, silhouette, sprite scale, panel layout — and the build is not done
+until a **side-by-side against a reference image passes on each**, judged against the
+image, not the author's own tests. Until the `palette` check actually samples pixels,
+that judgment is a human gate and the SCOPE says so out loud.
+
+---
+
 ## Ledger
 
 | # | Invariant | Rung | Cost to find |
@@ -375,6 +416,8 @@ stale step *vector*; this one accumulates a stale step *sum*.
 | 18 | A convention with no enforcement is a preference, and preferences drift | Invaders | leaderboard missed for a day; the TODO was written and ignored |
 | 19 | A check that cannot observe its subject must abstain loudly, never pass | Galaga | the `standalone` check passed a 404 page on every rung since birth; the "(0KB)" tell was in its own output |
 | 20 | A parametric mover must snap to its decision points — accumulated float steps past a tolerance skip the rules check | Munch Man | yellow Hoono walked out of the maze through a wall, once in ~60 games; in-bounds escapes would have been silent |
+| 21 | When the deliverable is fidelity, visual reference is a primary source, gathered before code | Alpiner | v1 shipped letters for sprites and was called "machine-verified" — 42,421 lit pixels, all typography |
+| 22 | A fidelity build isn't done until a side-by-side vs reference passes on named visual attributes | Alpiner | SCOPE had 26 machine criteria and 0 visual — 26/27 green while the screen showed letters |
 
 ---
 
