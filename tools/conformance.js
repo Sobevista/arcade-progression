@@ -140,9 +140,19 @@ const Conformance = (() => {
 
     swivelStick: {
       why: 'cabinet feel on touch, and no fixed hand position to reach for',
-      check: g => ({ pass: typeof window.Stick === 'object' || !!(g && g.Stick),
-                     detail: (typeof window.Stick === 'object' || (g && g.Stick))
-                             ? 'present' : 'no swivel stick' })
+      /* GENRE ABSTAIN (2026-07-25, rung 9): a swivel analog stick is a twitch-
+         MOVEMENT control. A turn-based, menu-driven rung has no analog movement to
+         steer, so the contract does not apply — it abstains LOUDLY (INV-19), it does
+         not pass by pretending nor fail for lacking a control it shouldn't have. Kin
+         to feedback's pilotOnly: a contract meeting a genre it wasn't written for. A
+         rung opts out by declaring window.__<game>.genre === 'menu'. */
+      check: g => {
+        if (g && g.genre === 'menu')
+          return { pass: null, detail: 'GENRE: menu/turn-based rung — no analog movement to steer, abstaining' };
+        return { pass: typeof window.Stick === 'object' || !!(g && g.Stick),
+                 detail: (typeof window.Stick === 'object' || (g && g.Stick))
+                         ? 'present' : 'no swivel stick' };
+      }
     },
 
     palette: {
@@ -163,7 +173,7 @@ const Conformance = (() => {
          2026-07-19 (rung 8): alpiner added in the same commit as the game,
          per INV-18 — the contract and the thing that fails when it is unmet
          ship together, never "we'll wire the check after". */
-      pilotOnly: ['wumpus', 'parsec', 'munchman', 'anteater', 'deliverance', 'alpiner'],
+      pilotOnly: ['wumpus', 'parsec', 'munchman', 'anteater', 'deliverance', 'alpiner', 'crystallight'],
       check(g, name) {
         if (!this.pilotOnly.includes(name)) {
           return { pass: null,
@@ -245,7 +255,7 @@ const Conformance = (() => {
     // is the same reflex that caught the standalone 404 on rung 4. Whoever adds
     // rung 9 must add its slug here IN THE SAME COMMIT (INV-18).
     for (const slug of ['02-invaders', '03-breakout', '04-galaga', '05-ti994a',
-                        '06-ti994a-2', '07-deliverance', '08-ti994a-3']) {
+                        '06-ti994a-2', '07-deliverance', '08-ti994a-3', '09-final-fantasy']) {
       const inReadme  = readme.includes('rungs/' + slug + '/');
       const inLanding = landing.includes('rungs/' + slug + '/');
       // "not built" / "queued" markers next to the slug's game name

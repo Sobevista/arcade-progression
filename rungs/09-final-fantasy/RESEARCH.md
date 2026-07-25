@@ -100,7 +100,13 @@ platformer laws. **Approved as the rung-9 build-target spec** (the SCOPE's "unde
 derived from these). They are NOT yet written into `INVARIANTS.md`: that file's law is
 earned-not-read (every line bought by a build going wrong, with evidence attached). These
 **graduate into the trove when the rung-9 build proves them in code** — a genre bone earns its
-INVARIANTS.md line the same way a platformer bone did. Until then they live here, approved.*
+INVARIANTS.md line the same way a platformer bone did. Until then they live here, approved.
+**PROVEN IN CODE 2026-07-25** — the rung-9 MVP reproduces all six and passes P1–P10. Routing
+decision (per INVARIANTS.md's own rule — a law must be wrong in EVERY game on EVERY platform):
+the genre-specific JRPG bones stay HERE as the proven spec, while the one universal law they
+yielded — sequence-emergent difficulty is invisible to a single-instance test — graduated to
+INVARIANTS.md as INV-23. Archaeology facts (random turn order, charge-vs-MP) went to
+ARCHAEOLOGY A-34/A-35; the charge choice to UX-40. See `RUN_LOG.md`.*
 
 - **JRPG-C1 — The battle is a menu, not an arcade.** Input is discrete command selection resolved
   over turns, not real-time dexterity. The screen serves information (HP/MP/status) first.

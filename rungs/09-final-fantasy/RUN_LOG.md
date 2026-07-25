@@ -94,3 +94,40 @@ it wasn't written for. Daniel's call: (a) add a genre-aware exception to
 `touchLayout` (like `pilotOnly`), or (b) rung 9 abstains LOUDLY on it (INV-19).
 Not silently fudged either way.
 
+---
+
+## 2026-07-25 (later) — sprites redrawn + GRADUATED (conformant, trove updated)
+
+**Silhouette gate now PASSES.** Replaced the placeholder blobs with pixel sprites
+(a `drawSprite` grid renderer): four class-readable heroes — knight, white mage,
+**the iconic pointed-hat black mage with glowing eyes**, red mage — and enemies that
+read as a green imp / grey hound / cyan wisp / horned red boss. Side-by-side against
+the NES battle frame now agrees on **every** named attribute incl. silhouette. Suite
+held 9/9 across the change; no console errors; overworld/town render clean.
+
+**CONFORMANT — 10 pass / 0 fail / 2 n/a** (`Conformance.check('crystallight')`):
+- `swivelStick` → **n/a, genre abstain.** Resolved the open decision above the honest
+  way: an analog cabinet stick is meaningless for a turn-based menu game, so the
+  contract now abstains LOUDLY for `genre:'menu'` rungs (INV-19), mirroring `feedback`'s
+  pilotOnly. The game declares `window.__crystallight.genre='menu'`.
+  *(Note: `touchLayout` PASSED — the d-pad's left/right buttons sit at the screen edges,
+  satisfying the twitch contract by coincidence. The genre mismatch was swivelStick, not
+  touchLayout as first suspected.)*
+- `feedback` → **pass** (module built, report context-stamped; `crystallight` added to
+  the pilot list, same commit as the game per INV-18).
+- `simCannotCheat` → n/a (no paddle geometry — turn-based).
+- Docs consistency: README + landing both list rung 9; `checkDocs` slug added; consistent.
+
+**Trove updated (findings routed by INVARIANTS.md's own rule):**
+- **INV-23** (law) — *sequence-emergent difficulty is invisible to a single-instance
+  test*, earned by P7 going red.
+- **A-34 / A-35** (archaeology) — random agility-independent turn order; D&D charges vs MP.
+- **UX-40** (choice) — ship NES tier-charges not MP, with the re-pick trigger.
+- JRPG-C1..C6 stay in `RESEARCH.md` as the proven genre spec (they fail INVARIANTS.md's
+  "wrong in every game on every platform" test — not forced in, per the earned-not-read law).
+
+**State: MVP COMPLETE + graduated.** Playable, conformant, invariants extracted. Open
+for a real family playtest; `releases.json` stays Invaders-only until Daniel advances it.
+Next natural extensions (not MVP): more spell tiers/worlds, the biblical story-spine
+content pass (named crystals/fiends), status effects beyond poison.
+

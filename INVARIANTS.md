@@ -392,6 +392,33 @@ that judgment is a human gate and the SCOPE says so out loud.
 
 ---
 
+## From rung 9 — CRYSTALLIGHT (2026-07-25) — the JRPG rung
+
+### INV-23 — A difficulty that lives in a SEQUENCE is invisible to a single-instance test
+Rung 9's losability test (P7) first pitted a lone boss against a full four-hero
+party and went **red** — "reckless wiped 0/12." The engine was not wrong. A single
+boss against four heroes *structurally cannot* express attrition: four actions a
+round burst it down before it can grind anyone. The lethality of a JRPG dungeon is
+a property of the **un-refilled sequence** of encounters — HP and spell-charges
+deplete with no rest between fights — not of any one battle. The test was measuring
+an axis on which the mechanic does not exist.
+
+**Earned:** rewritten as a no-rest gauntlet (8 encounters + boss, no inn, state
+carried forward), the *same* engine showed a competent line clear 12/16 and a
+reckless never-heal line wipe 9/16. The attrition was there the whole time; the
+first test just never let the sequence run. Caught in-session, before ship — the
+red test doing its job (contrast INV-9).
+
+**The invariant:** when a mechanic is **emergent over a sequence** — attrition,
+escalation, an economy, fatigue, a difficulty ramp — its test must run the whole
+sequence with the between-instance state carried forward. A per-instance test of a
+sequence property tells you nothing and says it confidently: it reads green (or
+falsely red) either way. INV-22's shape pointed at *time* instead of the renderer —
+a suite measures only the axis it was built along, and a single fight is the wrong
+axis for a property that only exists across many.
+
+---
+
 ## Ledger
 
 | # | Invariant | Rung | Cost to find |
@@ -418,6 +445,8 @@ that judgment is a human gate and the SCOPE says so out loud.
 | 20 | A parametric mover must snap to its decision points — accumulated float steps past a tolerance skip the rules check | Munch Man | yellow Hoono walked out of the maze through a wall, once in ~60 games; in-bounds escapes would have been silent |
 | 21 | When the deliverable is fidelity, visual reference is a primary source, gathered before code | Alpiner | v1 shipped letters for sprites and was called "machine-verified" — 42,421 lit pixels, all typography |
 | 22 | A fidelity build isn't done until a side-by-side vs reference passes on named visual attributes | Alpiner | SCOPE had 26 machine criteria and 0 visual — 26/27 green while the screen showed letters |
+
+| 23 | Sequence-emergent difficulty is invisible to a single-instance test | Final Fantasy | caught in-session — P7 went red testing a lone boss, fixed by the no-rest gauntlet |
 
 ---
 

@@ -136,6 +136,47 @@ const ENEMY={
   boss:  {name:'ASHFIEND',hp:220,dmg:26,absorb:8, evade:6, hitPct:14,xp:600,gil:400,col:PAL.red,
           spell:{pow:40,hit:85,name:'CINDER'}, boss:true}
 };
+/* pixel sprites — recognizable silhouettes at NES battle scale (INV-21/22).
+   Heroes face LEFT (toward the enemies on the left); enemies face RIGHT. */
+const SPX={'.':null,'k':'#0a0a12','w':'#fcfcfc','s':'#b8c0d8','b':'#4058c8','B':'#283890',
+  'f':'#f0c090','r':'#c02828','d':'#801818','g':'#40a840','G':'#206020','y':'#fcd820',
+  'p':'#9848c8','c':'#78e0fc','C':'#38a8d8','o':'#e07020','n':'#8a5a2a','e':'#0a0a12',
+  'x':'#8890a0','X':'#4c505c','h':'#c86038'};
+const SPRITES={
+ warrior:[ // knight — helmet, blue armor, sword down the left side
+  '....ssss....','...ssssss...','...sffffs...','...feefff...','...sffffs...',
+  '..sBbbbbBs..','.wsBbbbbb...','.wsBbbbbb...','.w.bbbbbb...','...bb..bb...',
+  '...bb..bb...','...ss..ss...'],
+ healer:[ // white mage — hooded white robe, red trim, staff
+  '....wwww....','...wwwwww...','...wffffw...','...feefff...','...wwwwww...',
+  '..wwwwwwww..','.wrwwwwrw.o.','.wrrwwrrw.o.','..wwwwwwww..','..wwwwwwww..',
+  '..ww.ww.ww..','..ww....ww..'],
+ caster:[ // black mage — the icon: big pointed hat, glowing eyes, dark robe
+  '.....kk.....','....kkkk....','...kkkkkk...','..kkkkkkkk..','.kkkkkkkkkk.',
+  'kkkkkkkkkkkk','...kyXXyk...','...kyyyyk...','...kkkkkk...','..Bbbbbbbb..',
+  '..bbbbbbbb..','..bb.bb.bb..'],
+ hybrid:[ // red mage — plumed red hat, cape, white front
+  '.......r....','.....rrrr...','....rrrrrr..','...rffffr...','...feefff...',
+  '...rffffr...','..rrrrrrrr..','.drrrrrrrrd.','..rrwwwwrr..','..rrwwwwrr..',
+  '..rr....rr..','..nn....nn..'],
+ goblin:[ // imp — small green humanoid with ears
+  '.G......G.','.Gg....gG.','..gggggg..','..geegge..','..gggggg..',
+  '...gggg...','..ggggggg.','.gg.gg.gg.','.g..g..g..'],
+ wolf:[ // hound — grey quadruped facing right
+  '.........xx','.x.......xx','xxxxxxxxxxx','xexxxxxxxx.','.xxxxxxxx..',
+  '.x.xx.xx.x.','.x.xx.xx.x.'],
+ wisp:[ // floating orb with a bright core
+  '...cc...','..cccc..','.cCwwCc.','.cwwwwc.','.cCwwCc.','..cccc..','...cc...','..c..c..'],
+ boss:[ // ASHFIEND — large red demon: horns, wings, yellow eyes
+  '..d......d..','.ddd....ddd.','..dddddddd..','.drrrrrrrrd.','drryrrryrrrd',
+  'drryrrryrrrd','.drrrwwrrrd.','..drrrrrrd..','.d.drrrrd.d.','dd..dddd..dd',
+  'd...d..d...d','.....dd.....']
+};
+function drawSprite(grid,x,y,sc,dim){
+  for(let r=0;r<grid.length;r++){const row=grid[r];
+    for(let c=0;c<row.length;c++){let col=SPX[row[c]]; if(!col)continue;
+      if(dim)col=SPX.X; px(x+c*sc,y+r*sc,sc,sc,col);}}
+}
 const SHOP=[{k:'POTION',cost:35,desc:'heal 60'},{k:'ETHER',cost:80,desc:'+2 charges'},
   {k:'BLADE', cost:120,desc:'+6 attack (WAR)'},{k:'COTTAGE',cost:150,desc:'rest anywhere'}];
 
@@ -650,20 +691,19 @@ function drawBattle(){
   const b=G.battle; if(!b)return;
   // field: top terrain band, black below (the reference frame)
   px(0,0,W,28,PAL.band); px(0,20,W,8,PAL.band2); px(0,28,W,H-28,PAL.black);
-  // enemies LEFT (formation grid)
-  b.foes.forEach((f,i)=>{const col=i%3, row=(i/3)|0;
-    const x=14+col*26, y=40+row*34;
-    if(f.alive){ px(x,y,f.boss?40:18,f.boss?40:18,f.col);
-      px(x+3,y+4,4,4,PAL.black); px(x+(f.boss?30:10),y+4,4,4,PAL.black); }
-    else text('†',x+4,y+2,PAL.dgrey);
+  // enemies LEFT (formation grid) — recognizable sprites (INV-21/22)
+  b.foes.forEach((f,i)=>{
+    if(f.boss){ if(f.alive)drawSprite(SPRITES.boss,18,44,3);
+      else text('†',44,64,PAL.dgrey,16); return; }
+    const col=i%3, row=(i/3)|0, x=10+col*42, y=40+row*40;
+    if(f.alive)drawSprite(SPRITES[f.key]||SPRITES.goblin,x,y,2);
+    else text('†',x+8,y+6,PAL.dgrey);
   });
-  // hero column CENTER-RIGHT, facing left
-  G.party.forEach((h,i)=>{const x=150,y=40+i*30;
-    if(h.alive){px(x,y,14,20,h.hp>h.maxhp*0.3?PAL.blue:PAL.low);
-      px(x-3,y+8,3,4,PAL.white);} // "facing left" nub
-    else text('†',x+3,y+4,PAL.dgrey);
-    // active-hero cursor during input
-    if(b.phase==='input'&&i===b.cmdHero)text('▶',x-14,y+4,PAL.yellow);
+  // hero column CENTER-RIGHT, facing left — recognizable class sprites
+  G.party.forEach((h,i)=>{const x=138,y=36+i*30;
+    if(h.alive)drawSprite(SPRITES[h.key],x,y,2,h.hp<=h.maxhp*0.3);
+    else text('†',x+8,y+8,PAL.dgrey);
+    if(b.phase==='input'&&i===b.cmdHero)text('▶',x-12,y+8,PAL.yellow);
   });
   // HP window FAR RIGHT
   box(W-72,32,68,H-96);
@@ -928,7 +968,7 @@ function simGauntlet(competent,seed){
 
 /* ====================== export (window.__<game>) ========================= */
 window.__crystallight={
-  game:G, sim, HiScore, LETTERS, startEntryOrTitle, Feedback, tests,
+  game:G, genre:'menu', sim, HiScore, LETTERS, startEntryOrTitle, Feedback, tests,
   // pure engine surface the tests + any bot can sample (no second implementation):
   engine:{attackDamage,hitChance,shuffle17,levelUp,makeHero,chargeMaxForLevel,xpForLevel},
   state:G.state, score:G.score,
