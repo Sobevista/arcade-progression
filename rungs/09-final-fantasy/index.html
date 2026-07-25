@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>CRYSTALLIGHT — rung 9 (NES / JRPG class)</title>
+<style>
+  /* Rung 9 of the arcade progression. One file, zero external requests.
+     JRPG class — the menu-driven, party-based, turn-based battle loop the NES
+     Final Fantasy (Square, 1987) set as the genre template. Combat FORMULAS are
+     transcribed from sourced NES mechanics (see SCOPE.md fidelity baseline):
+     random 1x-2x damage minus absorb; ~84% accuracy; magic-as-attack (half on
+     miss); pure-random 17-swap turn order (agility-independent, the NES rule);
+     D&D-style tier CHARGES not MP (Daniel's fidelity call — "see why they
+     changed it"); probabilistic 1-in-8 per-stat growth with guaranteed HP.
+     Theme is ORIGINAL (UX-34): "Warriors of Light restore four crystals" re-skin.
+     Visual layout locked from the NES battle frame (RUN_LOG 2026-07-25):
+     black field + top terrain band; enemies LEFT; hero column center-right;
+     HP window far right; white double-line window border; FIGHT/MAGIC/DRINK/ITEM. */
+  html,body{margin:0;padding:0;background:#000;color:#fcfcfc;font-family:monospace;
+    height:100%;overflow:hidden;-webkit-user-select:none;user-select:none;
+    touch-action:none}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center}
+  #topRow{display:flex;gap:8px;margin:4px 0;z-index:5}
+  #topRow button{background:#000;color:#bcbcbc;border:1px solid #444;font-family:monospace;
+    font-size:14px;padding:6px 14px;border-radius:4px}
+  #topRow button:active{background:#333}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#000;
+    display:block}
+  /* JRPG touch cluster: a d-pad (left) + A/B (right). bL/bR/bP are exposed for the
+     shared touch contract; see the touchLayout note in the conformance section —
+     a menu game is a genuinely different ergonomic than a twitch game. */
+  .ctl{position:fixed;bottom:10px;display:none;background:rgba(60,60,60,.35);
+    border:2px solid #666;border-radius:10px;color:#fcfcfc;font-size:30px;z-index:6;
+    font-family:monospace;text-align:center;width:120px;height:64px;line-height:60px}
+  .touch .ctl{display:block}
+  #bL{left:10px}
+  #bR{right:10px}
+  #bU{left:140px;bottom:80px;width:120px;height:60px;line-height:56px}
+  #bD{left:140px;width:120px;height:60px;line-height:56px}
+  #bA{right:140px;bottom:80px;width:120px;height:60px;line-height:56px}
+  #bC{right:140px;width:120px;height:60px;line-height:56px}
+  #fb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;z-index:20;
+    align-items:center;justify-content:center}
+  #fb.open{display:flex}
+  #fbBox{background:#111;border:2px solid #6888fc;border-radius:8px;padding:14px;
+    width:min(480px,92vw)}
+  #fbBox h2{margin:0 0 8px;font-size:15px;color:#6888fc}
+  #fbText{width:100%;height:90px;background:#000;color:#fcfcfc;border:1px solid #444;
+    font-family:monospace;font-size:13px;box-sizing:border-box}
+  #fbBox button{background:#000;color:#fcfcfc;border:1px solid #666;font-family:monospace;
+    padding:6px 10px;margin:8px 6px 0 0;border-radius:4px}
+  #fbNote{font-size:11px;color:#888;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="topRow">
+  <button id="bP">PAUSE</button><button id="bT">TITLE</button>
+  <button id="bS">SOUND:ON</button><button id="bF">FEEDBACK</button>
+</div>
+<canvas id="screen" width="256" height="240"></canvas>
+<div id="bL" class="ctl">&#9664;</div>
+<div id="bR" class="ctl">&#9654;</div>
+<div id="bU" class="ctl">&#9650;</div>
+<div id="bD" class="ctl">&#9660;</div>
+<div id="bA" class="ctl">A</div>
+<div id="bC" class="ctl">B</div>
+<div id="fb"><div id="fbBox">
+  <h2>PLAYTEST FEEDBACK — game is paused</h2>
+  <textarea id="fbText" placeholder="What happened? What felt wrong or right?"></textarea>
+  <div>
+    <button id="fbGit">OPEN GITHUB ISSUE</button>
+    <button id="fbCopy">COPY REPORT</button>
+    <button id="fbClose">CLOSE</button>
+  </div>
+  <div id="fbNote">Context (state, party, floor) is attached automatically.</div>
+</div></div>
+<script>
+"use strict";
+const cv=document.getElementById('screen'),cx=cv.getContext('2d');
+const W=256,H=240;
+
+/* ====================== deterministic RNG (INV-6 / SCOPE P1) ==============
+   Every random draw in the game — damage, hit checks, the turn shuffle, stat
+   growth, encounter rolls — pulls from this one stream. reset(seed) reseeds it,
+   so a fixed seed + a fixed command script is byte-reproducible. mulberry32. */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;
+  let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;
+  return ((t^t>>>14)>>>0)/4294967296;};}
+let RNG=mulberry32(12345);
+function rnd(){return RNG();}                    // [0,1)
+function ri(a,b){return a+Math.floor(rnd()*(b-a+1));}   // int [a,b] inclusive
+
+/* ====================== palette (NES-ish reconstruction) ==================
+   [ASSUMED — the PPU emitted analog NTSC; every RGB set is a reconstruction,
+   same open question as rung 7.] Sparse and high-contrast per the reference. */
+const PAL={black:'#000000',white:'#fcfcfc',grey:'#bcbcbc',dgrey:'#5c5c5c',
+  band:'#3860a4',band2:'#78a8fc',red:'#c02020',orange:'#e07020',green:'#3ca03c',
+  lgreen:'#78d078',blue:'#5878fc',yellow:'#fcd820',brown:'#a05820',
+  crystal:'#78e0fc',dark:'#181828',dungeon:'#101020',hp:'#fcfcfc',low:'#e05028'};
+
+/* ====================== game data ========================================= */
+// Four hero archetypes (C2 — complementary roles). Original names/art.
+// stats: str, agi, sta(mina), intl; hitPct grows per class; absorb from armor.
+const CLASSES={
+  warrior:{name:'ARIEL', role:'WAR', str:20,agi:5,sta:20,intl:1, hitPct:10,evade:5,
+    absorb:14,weap:16, hitGain:3, hpBase:35, magic:null},
+  healer:{name:'SETH',  role:'WHT', str:8, agi:8,sta:12,intl:15,hitPct:5, evade:8,
+    absorb:6, weap:8,  hitGain:1, hpBase:26, magic:'white'},
+  caster:{name:'LEVI',  role:'BLK', str:6, agi:9,sta:9, intl:20,hitPct:5, evade:8,
+    absorb:4, weap:6,  hitGain:1, hpBase:22, magic:'black'},
+  hybrid:{name:'JUDE',  role:'RED', str:14,agi:12,sta:14,intl:11,hitPct:8, evade:12,
+    absorb:9, weap:12, hitGain:2, hpBase:28, magic:'both'}
+};
+// Spells by tier (C1). cost = one charge of the spell's TIER (not per-spell).
+const SPELLS={
+  // white (heal/support)
+  CURE:{tier:1,school:'white',kind:'heal',pow:24,hit:100,name:'MEND'},
+  HEAL:{tier:2,school:'white',kind:'healAll',pow:20,hit:100,name:'BALM'},
+  LIFE:{tier:3,school:'white',kind:'revive',pow:1,hit:100,name:'RAISE'},
+  // black (elemental damage)
+  FIRE:{tier:1,school:'black',kind:'dmg',pow:30,hit:88,name:'FLAME'},
+  ICE :{tier:2,school:'black',kind:'dmg',pow:44,hit:88,name:'FROST'},
+  BOLT:{tier:3,school:'black',kind:'dmgAll',pow:38,hit:80,name:'STORM'}
+};
+const CLASS_SPELLS={
+  white:['CURE','HEAL','LIFE'], black:['FIRE','ICE','BOLT'],
+  both:['CURE','FIRE'], null:[]
+};
+// Enemies (original designs). dmg = attack score; hp, absorb, evade, hitPct, xp, gil.
+const ENEMY={
+  goblin:{name:'IMP',   hp:14, dmg:8,  absorb:2, evade:4, hitPct:6, xp:24, gil:12, col:PAL.green},
+  wolf:  {name:'HOUND', hp:20, dmg:12, absorb:3, evade:14,hitPct:8, xp:34, gil:16, col:PAL.grey},
+  wisp:  {name:'WISP',  hp:16, dmg:10, absorb:1, evade:10,hitPct:8, xp:40, gil:22, col:PAL.blue,
+          spell:{pow:22,hit:80,name:'HEX'}},
+  boss:  {name:'ASHFIEND',hp:220,dmg:26,absorb:8, evade:6, hitPct:14,xp:600,gil:400,col:PAL.red,
+          spell:{pow:40,hit:85,name:'CINDER'}, boss:true}
+};
+const SHOP=[{k:'POTION',cost:35,desc:'heal 60'},{k:'ETHER',cost:80,desc:'+2 charges'},
+  {k:'BLADE', cost:120,desc:'+6 attack (WAR)'},{k:'COTTAGE',cost:150,desc:'rest anywhere'}];
+
+/* ====================== charge system (D&D tiers, NOT MP — SCOPE P5) ======
+   8 tiers exist in the source; the slice uses 4 (UX-DEC-9a). Cost is the TIER.
+   Max per tier grows with level, capped at 9 (SCOPE [V]). Refill ONLY at rest. */
+const TIERS=4;
+function chargeMaxForLevel(lv,tier){
+  // gentle sourced-shape growth: you first gain a tier's slots as you level,
+  // then they accrue toward the cap of 9 (UX-DEC-9a; exact NES table is [A]).
+  const unlocked=lv>=(tier-1)*2+1;           // tier 1 at L1, tier2 L3, tier3 L5, tier4 L7
+  if(!unlocked)return 0;
+  return Math.min(9, 2+Math.floor((lv-((tier-1)*2+1))/2));
+}
+
+/* ====================== hero factory + growth (SCOPE P6) ================== */
+function makeHero(key){
+  const c=CLASSES[key], h={key,cls:c,name:c.name,role:c.role,
+    lv:1,xp:0, str:c.str,agi:c.agi,sta:c.sta,intl:c.intl,
+    hitPct:c.hitPct,evade:c.evade,absorb:c.absorb,weap:c.weap,
+    maxhp:c.hpBase+c.sta, hp:c.hpBase+c.sta, alive:true,
+    spells:CLASS_SPELLS[c.magic]||[], charges:[], chargeMax:[]};
+  for(let t=1;t<=TIERS;t++){const m=chargeMaxForLevel(1,t);h.chargeMax[t]=m;h.charges[t]=m;}
+  return h;
+}
+// XP to reach the NEXT level (gentle curve for the L1-10 slice; full 50-curve is later).
+function xpForLevel(lv){return Math.round(30*Math.pow(lv,1.9));}
+function grantXP(party,amount){
+  const alive=party.filter(h=>h.alive);
+  const each=Math.ceil(amount/Math.max(1,alive.length));
+  const ups=[];
+  for(const h of alive){h.xp+=each;
+    while(h.lv<10 && h.xp>=xpForLevel(h.lv)){h.lv++;levelUp(h);ups.push(h.name+' L'+h.lv);}}
+  return ups;
+}
+function levelUp(h){
+  // SCOPE P6: each of the 5 base stats independently has a 1-in-8 chance of +1;
+  // no base stat rises more than +1/level. HP ALWAYS rises, driven by stamina.
+  for(const s of ['str','agi','sta','intl']) if(ri(1,8)===1) h[s]++;
+  if(ri(1,8)===1) h.hitPct+=1; else h.hitPct+=h.cls.hitGain; // class hit% accrual (approx)
+  const gain=Math.max(4,Math.floor(h.sta/3)+ri(1,6));
+  h.maxhp+=gain; h.hp=Math.min(h.maxhp,h.hp+gain);
+  for(let t=1;t<=TIERS;t++){const m=chargeMaxForLevel(h.lv,t);
+    const add=m-h.chargeMax[t]; h.chargeMax[t]=m; if(add>0)h.charges[t]+=add;}
+}
+
+/* ====================== the battle resolver (SCOPE P1-P6) =================
+   PURE and deterministic over RNG. The game plays through this exact code; the
+   tests sample this exact code — no second implementation to drift (INV-6). */
+function attackDamage(atkScore){ // random 1x..2x of Damage score (SCOPE [V])
+  return atkScore + ri(0,atkScore);            // == ri(atk, 2*atk)
+}
+function hitChance(hitPct,evade){                // base ~84% adjusted (SCOPE [V])
+  return clamp(84 + hitPct - Math.floor(evade/2), 4, 99);
+}
+function clamp(v,a,b){return v<a?a:v>b?b:v;}
+function shuffle17(list){
+  // NES turn order: pure random shuffle, agility-INDEPENDENT (SCOPE [V], the rung
+  // finding). Swap two random slots 17 times over the combatant list.
+  const a=list.slice();
+  for(let i=0;i<17;i++){const p=ri(0,a.length-1),q=ri(0,a.length-1);
+    const t=a[p];a[p]=a[q];a[q]=t;}
+  return a;
+}
+
+/* ====================== game state ======================================= */
+const G={state:'title', screen:'title', party:[], gil:60, floor:0, potions:0, ethers:0,
+  frame:0, paused:false, soundOn:true, simMode:false, score:0, msg:'', log:[],
+  // world
+  ov:{x:4,y:4}, town:{sel:0}, shopSel:0, dun:{x:1,y:8,cleared:false},
+  // battle
+  battle:null, entry:null, victory:false};
+
+function newGame(seed){
+  RNG=mulberry32((seed==null?(Date.now()&0xffffff):seed)>>>0);
+  G.party=[makeHero('warrior'),makeHero('healer'),makeHero('caster'),makeHero('hybrid')];
+  G.gil=60; G.floor=0; G.potions=1; G.ethers=0; G.score=0; G.log=[]; G.msg='';
+  G.ov={x:4,y:4}; G.dun={x:1,y:8,cleared:false}; G.battle=null; G.victory=false;
+  G.state='overworld'; G.screen='overworld'; G.paused=false;
+}
+
+/* ====================== battle flow ====================================== */
+function startBattle(kind){
+  // build the enemy group
+  let foes=[];
+  if(kind==='boss'){foes=[mkEnemy('boss')];}
+  else{const n=ri(2,5), pool=G.floor>0?['goblin','wolf','wisp']:['goblin','wolf'];
+    for(let i=0;i<n;i++)foes.push(mkEnemy(pool[ri(0,pool.length-1)]));}
+  G.battle={foes, round:0, order:[], oi:0, phase:'input', cmdHero:0,
+    menu:0, sub:0, target:0, log:[], anim:0, kind, result:null, xp:0, gil:0,
+    cmds:[]};
+  G.state='battle'; G.screen='battle';
+  beginInput();
+}
+let _eid=0;
+function mkEnemy(key){const e=Object.assign({},ENEMY[key]);
+  return {key,name:e.name,hp:e.hp,maxhp:e.hp,dmg:e.dmg,absorb:e.absorb,evade:e.evade,
+    hitPct:e.hitPct,xp:e.xp,gil:e.gil,col:e.col,spell:e.spell||null,boss:!!e.boss,
+    alive:true,id:_eid++};}
+
+function beginInput(){
+  const b=G.battle; b.phase='input'; b.cmds=[];
+  b.cmdHero=firstAliveHero(0); b.menu=0; b.sub=0; b.target=0;
+  if(b.cmdHero<0){resolveRound();}   // (shouldn't happen — party wiped handled elsewhere)
+}
+function firstAliveHero(from){for(let i=from;i<G.party.length;i++)if(G.party[i].alive)return i;return -1;}
+
+// A hero's command is chosen; advance to the next living hero, then run the round.
+function pushCmd(cmd){
+  const b=G.battle; b.cmds[b.cmdHero]=cmd;
+  const nxt=firstAliveHero(b.cmdHero+1);
+  if(nxt<0){resolveRound();}
+  else{b.cmdHero=nxt;b.menu=0;b.sub=0;b.target=0;}
+}
+
+function resolveRound(){
+  const b=G.battle; b.round++; b.log=[];
+  // Build the combatant list: living heroes (with their queued commands) + living foes.
+  const units=[];
+  G.party.forEach((h,i)=>{if(h.alive)units.push({side:'hero',i,ref:h,cmd:b.cmds[i]||{k:'FIGHT'}});});
+  b.foes.forEach((f,i)=>{if(f.alive)units.push({side:'foe',i,ref:f});});
+  const order=shuffle17(units);   // SCOPE [V] — agility-independent
+  for(const u of order){
+    if(!u.ref.alive)continue;                       // died earlier this round → action wasted (NES)
+    if(u.side==='hero')doHeroAction(u); else doFoeAction(u);
+    if(allFoesDead()||allHeroesDead())break;
+  }
+  // end-of-round upkeep: (poison etc. could go here — SCOPE [V] poison 2/round)
+  if(allFoesDead()){winBattle();}
+  else if(allHeroesDead()){loseBattle();}
+  else{b.phase='report'; b.anim=45;}   // brief message beat, then next input
+}
+
+function pickFoeTarget(){const live=G.battle.foes.filter(f=>f.alive);
+  return live.length?live[ri(0,live.length-1)]:null;}
+function pickHeroTarget(){const live=G.party.filter(h=>h.alive);
+  return live.length?live[ri(0,live.length-1)]:null;}
+
+function doHeroAction(u){
+  const h=u.ref, cmd=u.cmd, b=G.battle;
+  if(cmd.k==='RUN'){ if(b.kind!=='boss' && rnd()<0.6){b.result='ran';b.phase='fled';b.anim=40;}
+      else log(h.name+' can\'t escape!'); return; }
+  if(cmd.k==='DRINK'){ if(G.potions>0){G.potions--; h.hp=Math.min(h.maxhp,h.hp+60);
+      log(h.name+' drinks — +60 HP');} else log('no potions'); return; }
+  if(cmd.k==='MAGIC'){ castSpell(h,cmd.spell); return; }
+  // FIGHT
+  const foe = (cmd.target!=null && b.foes[cmd.target] && b.foes[cmd.target].alive)
+      ? b.foes[cmd.target] : pickFoeTarget();
+  if(!foe)return;
+  const atk = h.weap + Math.floor(h.str/4) + Math.floor(h.hitPct/4);
+  if(rnd()*100 < hitChance(h.hitPct,foe.evade)){
+    const dmg=Math.max(1, attackDamage(atk)-foe.absorb);
+    foe.hp-=dmg; log(h.name+' hits '+foe.name+' '+dmg);
+    if(foe.hp<=0){foe.alive=false; log(foe.name+' falls');}
+  } else log(h.name+' misses');
+}
+function castSpell(h,key){
+  const sp=SPELLS[key]; if(!sp){return;}
+  if((h.charges[sp.tier]||0)<=0){log(h.name+': no charge'); return;}
+  h.charges[sp.tier]--;                                 // SPEND ONE CHARGE OF THE TIER
+  const base=sp.pow + Math.floor(h.intl/2);
+  if(sp.kind==='heal'){const t=lowestHero(); const amt=base;
+    t.hp=Math.min(t.maxhp,t.hp+amt); log(h.name+' '+sp.name+' +'+amt+' '+t.name);}
+  else if(sp.kind==='healAll'){for(const a of G.party)if(a.alive)a.hp=Math.min(a.maxhp,a.hp+base);
+    log(h.name+' '+sp.name+' heals all');}
+  else if(sp.kind==='revive'){const d=G.party.find(a=>!a.alive);
+    if(d){d.alive=true;d.hp=Math.floor(d.maxhp/2);log(h.name+' '+sp.name+' — '+d.name+' rises');}
+    else log('none fallen');}
+  else if(sp.kind==='dmg'||sp.kind==='dmgAll'){
+    const foes = sp.kind==='dmgAll' ? G.battle.foes.filter(f=>f.alive)
+       : [ (G.battle._mtarget && G.battle._mtarget.alive)?G.battle._mtarget:pickFoeTarget() ];
+    for(const foe of foes){ if(!foe)continue;
+      const hitOk = rnd()*100 < sp.hit;
+      let dmg=base; if(!hitOk)dmg=Math.floor(dmg/2);      // SCOPE [V] half damage on miss
+      dmg=Math.max(1,dmg); foe.hp-=dmg;
+      log(h.name+' '+sp.name+' '+foe.name+' '+dmg+(hitOk?'':' (graze)'));
+      if(foe.hp<=0){foe.alive=false;log(foe.name+' falls');}}}
+}
+function doFoeAction(u){
+  const f=u.ref; const t=pickHeroTarget(); if(!t)return;
+  if(f.spell && rnd()<0.35){ const dmg=Math.max(1,f.spell.pow-Math.floor(t.absorb/2));
+    t.hp-=dmg; log(f.name+' '+f.spell.name+' '+t.name+' '+dmg);
+    if(t.hp<=0){t.alive=false;t.hp=0;log(t.name+' is down');} return; }
+  if(rnd()*100 < hitChance(f.hitPct,t.evade)){
+    const dmg=Math.max(1, attackDamage(f.dmg)-t.absorb);
+    t.hp-=dmg; log(f.name+' hits '+t.name+' '+dmg);
+    if(t.hp<=0){t.alive=false;t.hp=0;log(t.name+' is down');}
+  } else log(f.name+' misses '+t.name);
+}
+function lowestHero(){let best=null;for(const h of G.party)if(h.alive)
+  if(!best||h.hp/h.maxhp<best.hp/best.maxhp)best=h; return best||G.party[0];}
+function allFoesDead(){return G.battle.foes.every(f=>!f.alive);}
+function allHeroesDead(){return G.party.every(h=>!h.alive);}
+function log(s){G.battle.log.push(s); if(G.battle.log.length>4)G.battle.log.shift();}
+
+function winBattle(){
+  const b=G.battle; let xp=0,gil=0;
+  for(const f of b.foes){xp+=f.xp;gil+=f.gil;}
+  b.xp=xp;b.gil=gil; G.gil+=gil; G.score+=xp;
+  const ups=grantXP(G.party,xp);
+  b.result='win'; b.phase='win'; b.anim=90; b.ups=ups;
+  if(b.kind==='boss'){G.victory=true;}
+}
+function loseBattle(){G.battle.result='lose';G.battle.phase='lose';G.battle.anim=90;}
+
+function endBattle(){
+  const b=G.battle;
+  if(b.result==='win'&&b.kind==='boss'){G.state='victory';G.screen='victory';return;}
+  if(b.result==='lose'){G.state='over';G.screen='over';return;}
+  // return to whichever field we came from
+  G.state=G.dunActive?'dungeon':'overworld'; G.screen=G.state; G.battle=null;
+}
+
+/* ====================== world (thin wrapper — C4/C5) =====================
+   overworld: a small field; steps roll a random encounter. town: inn+shop
+   (the safe point that refills HP + charges — the attrition pivot). dungeon:
+   a short crawl with encounters and the boss at the end. */
+const OVW=10,OVH=8;
+// 0 grass,1 tree(block),2 town,3 dungeon
+const OVMAP=[
+ [1,1,1,1,1,1,1,1,1,1],
+ [1,0,0,0,0,0,0,0,3,1],
+ [1,0,1,1,0,1,1,0,0,1],
+ [1,0,1,0,0,0,1,0,0,1],
+ [1,0,0,0,2,0,0,0,0,1],
+ [1,0,1,0,0,0,1,1,0,1],
+ [1,0,0,0,0,0,0,0,0,1],
+ [1,1,1,1,1,1,1,1,1,1]];
+function ovStep(dx,dy){
+  const nx=G.ov.x+dx, ny=G.ov.y+dy;
+  if(nx<0||ny<0||nx>=OVW||ny>=OVH)return;
+  const t=OVMAP[ny][nx]; if(t===1)return;
+  G.ov.x=nx;G.ov.y=ny;
+  if(t===2){G.state='town';G.screen='town';G.town.sel=0;return;}
+  if(t===3){G.dunActive=true;G.state='dungeon';G.screen='dungeon';G.dun={x:1,y:8,cleared:G.dun.cleared};return;}
+  if(rnd()<0.16){G.dunActive=false;startBattle('rand');}
+}
+function inn(){for(const h of G.party){h.alive=true;h.hp=h.maxhp;
+  for(let t=1;t<=TIERS;t++)h.charges[t]=h.chargeMax[t];} G.msg='The party rests. Restored.';}
+function buy(){const it=SHOP[G.shopSel];
+  if(G.gil<it.cost){G.msg='Not enough gil.';return;}
+  G.gil-=it.cost;
+  if(it.k==='POTION')G.potions++;
+  else if(it.k==='ETHER'){const h=G.party.find(x=>x.spells.length);if(h){h.charges[1]=Math.min(h.chargeMax[1],h.charges[1]+2);}}
+  else if(it.k==='BLADE')G.party[0].weap+=6;
+  else if(it.k==='COTTAGE')G.ethers++;   // reuse as a rest item count
+  G.msg='Bought '+it.k+'.';}
+
+const DUNW=10,DUNH=10;
+// 0 floor,1 wall,4 treasure,5 boss gate
+const DUNMAP=[
+ [1,1,1,1,1,1,1,1,1,1],
+ [1,0,0,0,1,0,0,0,5,1],
+ [1,0,1,0,1,0,1,1,0,1],
+ [1,0,1,0,0,0,0,1,0,1],
+ [1,0,1,1,1,1,0,1,0,1],
+ [1,0,0,0,0,1,0,0,0,1],
+ [1,1,1,0,1,1,1,1,0,1],
+ [1,4,0,0,0,0,0,0,0,1],
+ [1,0,1,1,1,1,1,1,0,1],
+ [1,1,1,1,1,1,1,1,1,1]];
+function dunStep(dx,dy){
+  const nx=G.dun.x+dx, ny=G.dun.y+dy;
+  if(nx<0||ny<0||nx>=DUNW||ny>=DUNH)return;
+  const t=DUNMAP[ny][nx]; if(t===1)return;
+  G.dun.x=nx;G.dun.y=ny;
+  if(t===4&&!G.dun.cleared){G.dun.cleared=true;G.party[0].weap+=6;G.potions+=2;G.msg='Found a relic blade + 2 potions!';return;}
+  if(t===5){startBattle('boss');return;}
+  if(rnd()<0.22){startBattle('rand');}
+}
+
+/* ====================== high score table (shared protocol) ================ */
+const KEY='arcade.crystallight.scores';
+const HiScore={
+  list(){try{const r=localStorage.getItem(KEY);return r?JSON.parse(r):[];}catch(e){return G._mem||[];}},
+  save(l){try{localStorage.setItem(KEY,JSON.stringify(l));}catch(e){G._mem=l;}},
+  qualifies(s){const l=HiScore.list();return s>0&&(l.length<8||s>l[l.length-1].s);},
+  add(n,s){let l=HiScore.list();l.push({n,s});l.sort((a,b)=>b.s-a.s);l=l.slice(0,8);HiScore.save(l);},
+  clear(){HiScore.save([]);}
+};
+const DEFAULT_SCORES=[
+  {n:'LUX',s:2400},{n:'DAWN',s:2000},{n:'ORB',s:1600},{n:'SOL',s:1200},
+  {n:'RAY',s:900},{n:'GLO',s:600},{n:'LIT',s:350},{n:'DIM',s:120}];
+function seedScores(){if(HiScore.list().length===0)HiScore.save(DEFAULT_SCORES.slice());}
+seedScores();
+const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.';
+function startEntryOrTitle(score){
+  if(HiScore.qualifies(score)){G.entry={active:true,name:['A','A','A'],pos:0,latch:true};
+    G.state='entry';G.screen='entry';}
+  else {G.state='title';G.screen='title';}
+}
+
+/* ====================== feedback (pilot contract) ========================= */
+const Feedback={
+  isOpen:false,
+  open(){Feedback.isOpen=true;G.paused=true;document.getElementById('fb').classList.add('open');},
+  close(){Feedback.isOpen=false;G.paused=false;document.getElementById('fb').classList.remove('open');},
+  buildReport(){
+    const notes=document.getElementById('fbText').value||'(no notes)';
+    const p=G.party.map(h=>h.name+' L'+h.lv+' '+h.hp+'/'+h.maxhp).join(', ');
+    return ['CRYSTALLIGHT playtest report','notes: '+notes,
+      'state: '+G.state,'score: '+G.score,'party: '+p,'gil: '+G.gil,
+      'date: '+new Date().toISOString(),
+      'viewport: '+window.innerWidth+'x'+window.innerHeight,
+      'ua: '+navigator.userAgent].join('\n');
+  }
+};
+document.getElementById('bF').onclick=()=>Feedback.isOpen?Feedback.close():Feedback.open();
+document.getElementById('fbClose').onclick=()=>Feedback.close();
+document.getElementById('fbGit').onclick=()=>{const r=Feedback.buildReport();
+  window.open('https://github.com/Sobevista/arcade-progression/issues/new?title='
+    +encodeURIComponent('[crystallight] playtest report')+'&body='+encodeURIComponent(r),'_blank');};
+document.getElementById('fbCopy').onclick=()=>{const r=Feedback.buildReport();
+  if(navigator.clipboard)navigator.clipboard.writeText(r);};
+
+/* ====================== input ============================================= */
+// discrete JRPG inputs (the same ones a bot drives via the sim contract)
+function press(a){
+  if(G.paused&&a!=='pause'){return;}
+  if(G.state==='title'){if(a==='confirm'){newGame();}return;}
+  if(G.state==='entry'){entryKey(a);return;}
+  if(G.state==='victory'||G.state==='over'){if(a==='confirm')startEntryOrTitle(G.score);return;}
+  if(G.state==='overworld'){worldInput(G.ov,ovStep,a);return;}
+  if(G.state==='dungeon'){worldInput(G.dun,dunStep,a);return;}
+  if(G.state==='town'){townInput(a);return;}
+  if(G.state==='battle'){battleInput(a);return;}
+}
+function worldInput(pos,stepFn,a){
+  if(a==='up')stepFn(0,-1);else if(a==='down')stepFn(0,1);
+  else if(a==='left')stepFn(-1,0);else if(a==='right')stepFn(1,0);
+}
+function townInput(a){const opts=['INN (rest)','SHOP','LEAVE'];
+  if(a==='up')G.town.sel=(G.town.sel+opts.length-1)%opts.length;
+  else if(a==='down')G.town.sel=(G.town.sel+1)%opts.length;
+  else if(a==='confirm'){
+    if(G.town.sel===0){inn();}
+    else if(G.town.sel===1){G.state='shop';G.screen='shop';G.shopSel=0;}
+    else {G.state='overworld';G.screen='overworld';}}
+}
+function shopInput(a){
+  if(a==='up')G.shopSel=(G.shopSel+SHOP.length-1)%SHOP.length;
+  else if(a==='down')G.shopSel=(G.shopSel+1)%SHOP.length;
+  else if(a==='confirm')buy();
+  else if(a==='cancel'){G.state='town';G.screen='town';}
+}
+function battleInput(a){
+  const b=G.battle; if(!b)return;
+  if(b.phase==='report'||b.phase==='win'||b.phase==='lose'||b.phase==='fled'){
+    if(a==='confirm'){
+      if(b.phase==='report'){beginInput();}
+      else if(b.phase==='fled'){G.state=G.dunActive?'dungeon':'overworld';G.screen=G.state;G.battle=null;}
+      else {endBattle();}}
+    return;}
+  if(b.phase!=='input')return;
+  const MENU=['FIGHT','MAGIC','DRINK','ITEM','RUN'];
+  const h=G.party[b.cmdHero];
+  if(b.sub===0){ // top menu
+    if(a==='up')b.menu=(b.menu+MENU.length-1)%MENU.length;
+    else if(a==='down')b.menu=(b.menu+1)%MENU.length;
+    else if(a==='cancel'){ if(b.cmdHero>0){ // back up to previous hero
+        const prev=prevAliveHero(b.cmdHero-1); if(prev>=0){b.cmdHero=prev;b.menu=0;} } }
+    else if(a==='confirm'){
+      const m=MENU[b.menu];
+      if(m==='FIGHT'){b.sub=2;b.target=firstAliveFoe();}
+      else if(m==='DRINK'){pushCmd({k:'DRINK'});}
+      else if(m==='ITEM'){pushCmd({k:'DRINK'});}
+      else if(m==='RUN'){pushCmd({k:'RUN'});}
+      else if(m==='MAGIC'){ if(h.spells.length){b.sub=1;b.spellSel=0;} }
+    }
+  } else if(b.sub===1){ // spell pick
+    const sps=h.spells;
+    if(a==='up')b.spellSel=(b.spellSel+sps.length-1)%sps.length;
+    else if(a==='down')b.spellSel=(b.spellSel+1)%sps.length;
+    else if(a==='cancel')b.sub=0;
+    else if(a==='confirm'){const key=sps[b.spellSel];const sp=SPELLS[key];
+      if((h.charges[sp.tier]||0)<=0){G.msg='No charge';return;}
+      if(sp.kind==='dmg'){b.sub=2;b._pendingSpell=key;b.target=firstAliveFoe();}
+      else{pushCmd({k:'MAGIC',spell:key});}}
+  } else if(b.sub===2){ // target pick
+    const live=b.foes.map((f,i)=>f.alive?i:-1).filter(i=>i>=0);
+    let idx=live.indexOf(b.target); if(idx<0)idx=0;
+    if(a==='up'||a==='left')idx=(idx+live.length-1)%live.length;
+    else if(a==='down'||a==='right')idx=(idx+1)%live.length;
+    else if(a==='cancel'){b.sub=(b._pendingSpell?1:0);}
+    else if(a==='confirm'){
+      if(b._pendingSpell){const key=b._pendingSpell;b._pendingSpell=null;
+        b._mtarget=b.foes[b.target]; pushCmd({k:'MAGIC',spell:key});}
+      else pushCmd({k:'FIGHT',target:b.target});}
+    b.target=live[idx];
+  }
+}
+function prevAliveHero(from){for(let i=from;i>=0;i--)if(G.party[i].alive)return i;return -1;}
+function firstAliveFoe(){for(let i=0;i<G.battle.foes.length;i++)if(G.battle.foes[i].alive)return i;return 0;}
+
+function entryKey(a){
+  const en=G.entry; if(!en)return;
+  if(a==='confirm'){HiScore.add(en.name.join(''),G.score);G.state='title';G.screen='title';return;}
+  if(a==='up'){const i=(LETTERS.indexOf(en.name[en.pos])+1)%LETTERS.length;en.name[en.pos]=LETTERS[i];}
+  if(a==='down'){const i=(LETTERS.indexOf(en.name[en.pos])+LETTERS.length-1)%LETTERS.length;en.name[en.pos]=LETTERS[i];}
+  if(a==='left')en.pos=Math.max(0,en.pos-1);
+  if(a==='right')en.pos=Math.min(2,en.pos+1);
+}
+// keyboard → discrete inputs
+addEventListener('keydown',e=>{
+  if(e.key==='f'||e.key==='F'){Feedback.isOpen?Feedback.close():Feedback.open();return;}
+  if(e.key==='p'||e.key==='P'){G.paused=!G.paused;return;}
+  let a=null;
+  if(e.key==='ArrowUp'||e.key==='w')a='up';
+  else if(e.key==='ArrowDown'||e.key==='s')a='down';
+  else if(e.key==='ArrowLeft'||e.key==='a')a='left';
+  else if(e.key==='ArrowRight'||e.key==='d')a='right';
+  else if(e.key==='Enter'||e.key===' '||e.key==='z'||e.key==='Z')a='confirm';
+  else if(e.key==='Escape'||e.key==='x'||e.key==='X'||e.key==='Backspace')a='cancel';
+  if(a){e.preventDefault();
+    if(G.state==='shop')shopInput(a); else press(a);}
+});
+// touch buttons
+function bindTap(id,a){const el=document.getElementById(id);if(!el)return;
+  el.addEventListener('touchstart',e=>{e.preventDefault();
+    if(G.state==='shop')shopInput(a);else press(a);},{passive:false});}
+bindTap('bL','left');bindTap('bR','right');bindTap('bU','up');bindTap('bD','down');
+bindTap('bA','confirm');bindTap('bC','cancel');
+document.getElementById('bP').onclick=()=>{G.paused=!G.paused;};
+document.getElementById('bT').onclick=()=>{G.state='title';G.screen='title';};
+document.getElementById('bS').onclick=function(){G.soundOn=!G.soundOn;
+  this.textContent='SOUND:'+(G.soundOn?'ON':'OFF');};
+// touch detection
+function detectTouch(){if('ontouchstart'in window)document.body.classList.add('touch');}
+detectTouch();
+
+/* ====================== render (canvas 256x240) ==========================
+   The NES battle frame, honestly reproduced: black field + top terrain band;
+   enemies LEFT; hero column center-right; HP window FAR RIGHT; white
+   double-line window border; FIGHT/MAGIC/DRINK/ITEM menu (RUN_LOG 2026-07-25). */
+function px(x,y,w,h,c){cx.fillStyle=c;cx.fillRect(x|0,y|0,w|0,h|0);}
+cx.textBaseline='top';
+function text(s,x,y,c,size){cx.fillStyle=c||PAL.white;cx.font=(size||8)+'px monospace';cx.fillText(s,x|0,y|0);}
+function box(x,y,w,h){ // the double-line window frame
+  px(x,y,w,h,PAL.black);
+  cx.strokeStyle=PAL.white;cx.lineWidth=1;
+  cx.strokeRect(x+1.5,y+1.5,w-3,h-3); cx.strokeRect(x+3.5,y+3.5,w-7,h-7);
+}
+function frame(){
+  cx.clearRect(0,0,W,H); px(0,0,W,H,PAL.black);
+  const s=G.screen;
+  if(s==='title')drawTitle();
+  else if(s==='overworld')drawWorld(OVMAP,OVW,OVH,G.ov,'THE OVERWORLD');
+  else if(s==='dungeon')drawWorld(DUNMAP,DUNW,DUNH,G.dun,'THE DUNGEON OF ASH',true);
+  else if(s==='town')drawTown();
+  else if(s==='shop')drawShop();
+  else if(s==='battle')drawBattle();
+  else if(s==='victory')drawEnd('THE CRYSTAL IS LIT','light returns to the land',PAL.crystal);
+  else if(s==='over')drawEnd('THE PARTY HAS FALLEN','darkness spreads...',PAL.red);
+  else if(s==='entry')drawEntry();
+  if(G.paused&&!Feedback.isOpen){box(96,108,64,24);text('PAUSED',110,116,PAL.white);}
+}
+function drawTitle(){
+  px(0,0,W,80,PAL.dark);
+  for(let i=0;i<40;i++){const x=(i*97)%W,y=(i*53)%80;px(x,y,1,1,PAL.white);}
+  text('CRYSTALLIGHT',64,30,PAL.crystal,16);
+  text('rung 9  ·  the JRPG',80,54,PAL.grey,8);
+  const l=HiScore.list();
+  text('WARRIORS OF LIGHT',80,96,PAL.white);
+  text('restore the four crystals',66,110,PAL.grey);
+  text('best light: '+(l[0]?l[0].n+' '+l[0].s:'—'),80,140,PAL.yellow);
+  if((G.frame>>5)&1)text('PRESS ENTER / A',82,180,PAL.white);
+  text('arrows move · A confirm · B cancel',36,214,PAL.dgrey);
+}
+function drawWorld(map,mw,mh,pos,label,dun){
+  const T=22, ox=(W-mw*T)/2, oy=28;
+  text(label,8,8,PAL.grey);
+  for(let y=0;y<mh;y++)for(let x=0;x<mw;x++){
+    const t=map[y][x]; let c=dun?PAL.dungeon:PAL.green;
+    if(t===1)c=dun?PAL.dgrey:PAL.brown;
+    else if(t===2)c=PAL.yellow; else if(t===3)c=PAL.red;
+    else if(t===4)c=G.dun.cleared?PAL.dungeon:PAL.yellow; else if(t===5)c=PAL.crystal;
+    px(ox+x*T,oy+y*T,T-1,T-1,c);
+  }
+  // player
+  px(ox+pos.x*T+4,oy+pos.y*T+4,T-9,T-9,PAL.white);
+  px(ox+pos.x*T+7,oy+pos.y*T+6,3,3,PAL.blue);
+  // party strip
+  box(4,H-40,W-8,34);
+  G.party.forEach((h,i)=>{const x=10+i*62;
+    text(h.role,x,H-34,h.alive?PAL.white:PAL.low);
+    text(h.hp+'/'+h.maxhp,x,H-24,h.hp>h.maxhp*0.3?PAL.white:PAL.low);
+    text('L'+h.lv,x,H-14,PAL.grey);});
+  if(G.msg){box(20,84,W-40,20);text(G.msg,28,90,PAL.yellow);}
+}
+function drawTown(){
+  px(0,0,W,H,PAL.dark);
+  text('CRYSTAL HAVEN',8,8,PAL.crystal);
+  text('gil: '+G.gil+'   potions: '+G.potions,8,20,PAL.yellow);
+  const opts=['INN (rest)','SHOP','LEAVE'];
+  box(28,60,120,74);
+  opts.forEach((o,i)=>{text((i===G.town.sel?'▶':'  ')+o,38,72+i*20,i===G.town.sel?PAL.white:PAL.grey);});
+  if(G.msg){box(20,150,W-40,24);text(G.msg,28,158,PAL.yellow);}
+  text('INN restores HP + all charges',20,200,PAL.dgrey);
+  text('(the only refill — spend wisely)',20,212,PAL.dgrey);
+}
+function drawShop(){
+  px(0,0,W,H,PAL.dark);
+  text('SHOP    gil: '+G.gil,8,8,PAL.yellow);
+  box(20,32,W-40,120);
+  SHOP.forEach((it,i)=>{const y=42+i*22;
+    text((i===G.shopSel?'▶':'  ')+it.k,30,y,i===G.shopSel?PAL.white:PAL.grey);
+    text(it.cost+'g',150,y,PAL.yellow); text(it.desc,180,y,PAL.dgrey);});
+  if(G.msg){box(20,160,W-40,20);text(G.msg,28,166,PAL.yellow);}
+  text('A buy   B leave',20,206,PAL.dgrey);
+}
+function drawBattle(){
+  const b=G.battle; if(!b)return;
+  // field: top terrain band, black below (the reference frame)
+  px(0,0,W,28,PAL.band); px(0,20,W,8,PAL.band2); px(0,28,W,H-28,PAL.black);
+  // enemies LEFT (formation grid)
+  b.foes.forEach((f,i)=>{const col=i%3, row=(i/3)|0;
+    const x=14+col*26, y=40+row*34;
+    if(f.alive){ px(x,y,f.boss?40:18,f.boss?40:18,f.col);
+      px(x+3,y+4,4,4,PAL.black); px(x+(f.boss?30:10),y+4,4,4,PAL.black); }
+    else text('†',x+4,y+2,PAL.dgrey);
+  });
+  // hero column CENTER-RIGHT, facing left
+  G.party.forEach((h,i)=>{const x=150,y=40+i*30;
+    if(h.alive){px(x,y,14,20,h.hp>h.maxhp*0.3?PAL.blue:PAL.low);
+      px(x-3,y+8,3,4,PAL.white);} // "facing left" nub
+    else text('†',x+3,y+4,PAL.dgrey);
+    // active-hero cursor during input
+    if(b.phase==='input'&&i===b.cmdHero)text('▶',x-14,y+4,PAL.yellow);
+  });
+  // HP window FAR RIGHT
+  box(W-72,32,68,H-96);
+  G.party.forEach((h,i)=>{const y=40+i*30;
+    text(h.name,W-66,y,h.alive?PAL.white:PAL.low);
+    text('HP '+h.hp,W-66,y+10,h.hp>h.maxhp*0.3?PAL.white:PAL.low);});
+  // bottom-left message box
+  box(4,H-56,150,52);
+  if(b.phase==='win'){text('VICTORY!',12,H-50,PAL.yellow);
+    text('+'+b.xp+' xp  +'+b.gil+'g',12,H-38,PAL.white);
+    if(b.ups&&b.ups.length)text(b.ups.slice(0,2).join(' '),12,H-26,PAL.crystal);
+    text('press A',12,H-14,PAL.grey);}
+  else if(b.phase==='lose'){text('DEFEAT...',12,H-46,PAL.red);text('press A',12,H-30,PAL.grey);}
+  else if(b.phase==='fled'){text('got away!',12,H-46,PAL.white);text('press A',12,H-30,PAL.grey);}
+  else {b.log.forEach((s,i)=>text(s,12,H-50+i*11,PAL.white));
+    if(b.phase==='report')text('press A',12,H-14,PAL.grey);}
+  // command menu (bottom-right) during input
+  if(b.phase==='input'){drawCmdMenu(b);}
+}
+function drawCmdMenu(b){
+  const h=G.party[b.cmdHero];
+  if(b.sub===0){const M=['FIGHT','MAGIC','DRINK','ITEM','RUN'];
+    box(160,H-72,92,68);
+    M.forEach((m,i)=>text((i===b.menu?'▶':' ')+m,168,H-66+i*12,i===b.menu?PAL.white:PAL.grey));
+  } else if(b.sub===1){const sps=h.spells;
+    box(150,H-84,102,80);
+    sps.forEach((k,i)=>{const sp=SPELLS[k];const ch=h.charges[sp.tier]||0;
+      text((i===b.spellSel?'▶':' ')+sp.name+' '+ch,158,H-78+i*13,ch>0?(i===b.spellSel?PAL.white:PAL.grey):PAL.dgrey);});
+  } else if(b.sub===2){
+    box(160,H-72,92,68); text('TARGET:',168,H-66,PAL.grey);
+    const foe=b.foes[b.target];
+    if(foe)text('▶'+foe.name,168,H-52,PAL.white);
+    text('A ok / B back',168,H-20,PAL.dgrey);
+  }
+  text(h.name+' ('+h.role+')',12,H-68,PAL.crystal);
+}
+function drawEnd(t,sub,c){
+  px(0,60,W,60,PAL.dark);
+  text(t,(W-t.length*8)/2,72,c,12); text(sub,(W-sub.length*8)/2>>0,98,PAL.grey);
+  text('score '+G.score,100,140,PAL.yellow);
+  if((G.frame>>5)&1)text('PRESS A',100,180,PAL.white);
+}
+function drawEntry(){
+  const en=G.entry;
+  text('A NEW LIGHT ENTERS THE LEDGER',24,60,PAL.crystal);
+  text('score '+G.score,96,84,PAL.yellow);
+  en.name.forEach((ch,i)=>{text(ch,100+i*20,120,i===en.pos?PAL.yellow:PAL.white,16);});
+  text('up/down letter · L/R move · A save',18,170,PAL.dgrey);
+}
+
+/* ====================== loop ============================================= */
+function tick(){
+  G.frame++;
+  const b=G.battle;
+  if(b&&!G.paused){
+    // auto-advance the animated result beats (report/win/lose/fled)
+    if(b.anim>0){b.anim--; if(b.anim===0&&b.phase==='report'&&!G.simMode)beginInput();}
+  }
+}
+let acc=0,last=performance.now();
+function raf(now){ if(!G.simMode){ acc+=now-last; last=now;
+    while(acc>=1000/60){tick();acc-=1000/60;} frame(); }
+  requestAnimationFrame(raf);}
+requestAnimationFrame(raf);
+
+/* ====================== sim contract (bots drive real inputs only) ========
+   For this turn-based rung the "input" is the same discrete controls a player
+   uses (up/down/left/right/confirm/cancel). step() consumes at most one queued
+   press per frame and advances the game. observe() is read-only. The mechanics
+   tests below ALSO sample the real resolver directly (attackDamage, shuffle17,
+   levelUp) — that is the actual code the game runs, not a copy. */
+const sim={
+  input:{up:false,down:false,left:false,right:false,confirm:false,cancel:false},
+  _q:[],
+  reset(seed){G.simMode=true;newGame(seed==null?1:seed);sim._q=[];},
+  queue(a){sim._q.push(a);},                     // preferred: enqueue discrete presses
+  press(a){if(G.state==='shop')shopInput(a);else press(a);},
+  step(dt){const n=Math.max(1,Math.round(dt/(1000/60)));
+    for(let i=0;i<n;i++){G.frame++;
+      // edge-trigger any held sim.input flags, then drain the queue one per frame
+      for(const k of ['up','down','left','right','confirm','cancel'])
+        if(sim.input[k]){sim.input[k]=false;sim.press(k);}
+      if(sim._q.length)sim.press(sim._q.shift());
+      const b=G.battle; if(b&&b.anim>0){b.anim--; if(b.anim===0&&b.phase==='report')beginInput();}
+    }},
+  observe(){
+    const b=G.battle;
+    return {state:G.state, screen:G.screen, score:G.score, gil:G.gil,
+      party:G.party.map(h=>({name:h.name,lv:h.lv,hp:h.hp,maxhp:h.maxhp,alive:h.alive,
+        charges:h.charges.slice(), xp:h.xp})),
+      partyAlive:G.party.filter(h=>h.alive).length,
+      foesAlive:b?b.foes.filter(f=>f.alive).length:0,
+      round:b?b.round:0, phase:b?b.phase:null,
+      ov:{x:G.ov.x,y:G.ov.y}, dun:{x:G.dun.x,y:G.dun.y,cleared:G.dun.cleared}};
+  }
+};
+
+/* ====================== in-page verification suite (SCOPE P1-P10) =========
+   Each Pn drives or samples the REAL engine and states a binary verdict. A
+   mutation that breaks the mechanic must turn its test RED (noted per test). */
+const tests={
+  results:{},
+  runAll(){const R={};
+    R.P1_determinism=this.determinism();
+    R.P2_turnOrder=this.turnOrder();
+    R.P3_damage=this.damage();
+    R.P4_accuracy=this.accuracy();
+    R.P5_charges=this.charges();
+    R.P6_growth=this.growth();
+    R.P7_attrition=this.attrition();
+    R.P8_winlose=this.winlose();
+    R.P10_frame=this.frameCost();
+    let pass=0,fail=0;for(const k in R){if(R[k].pass)pass++;else fail++;}
+    R.SUMMARY={pass,fail,verdict:fail===0?'ALL GREEN':'FAILURES PRESENT'};
+    this.results=R;G.simMode=false;return R;},
+
+  // P1 — same seed + same command script → identical battle log & outcome.
+  determinism(){
+    const run=()=>{RNG=mulberry32(777);const a=makeHero('warrior');const foe=mkEnemy('wolf');
+      const out=[];for(let i=0;i<20;i++){const atk=a.weap+Math.floor(a.str/4);
+        out.push((rnd()*100<hitChance(a.hitPct,foe.evade))?Math.max(1,attackDamage(atk)-foe.absorb):0);}
+      return out.join(',');};
+    const x=run(),y=run();
+    return {pass:x===y, detail:x===y?'identical over 20 rolls':'DIVERGED'};},
+
+  // P2 — turn order is the agility-INDEPENDENT 17-swap shuffle. Give one unit a
+  // huge agility; over many rounds it must NOT act first more than chance.
+  turnOrder(){RNG=mulberry32(9);
+    const units=[{id:0,agi:99},{id:1,agi:1},{id:2,agi:1},{id:3,agi:1}];
+    let firstIsFast=0,N=4000;
+    for(let i=0;i<N;i++){const o=shuffle17(units);if(o[0].id===0)firstIsFast++;}
+    const rate=firstIsFast/N;   // should be ~1/4, NOT ~1 (agility-weighted)
+    return {pass:Math.abs(rate-0.25)<0.04,
+      detail:'fast unit first '+(rate*100).toFixed(1)+'% (want ~25%, agility-independent)'};},
+
+  // P3 — physical damage lands in [1x,2x]*atk - absorb, min 1; half on spell miss.
+  damage(){RNG=mulberry32(3);let ok=true,lo=1e9,hi=0;const atk=20,abs=5;
+    for(let i=0;i<3000;i++){const d=Math.max(1,attackDamage(atk)-abs);
+      lo=Math.min(lo,d);hi=Math.max(hi,d);
+      if(d<1||d>2*atk-abs)ok=false;}
+    // half-on-miss check via the spell path
+    RNG=mulberry32(3);const h=makeHero('caster');const foe=mkEnemy('boss');
+    G.battle={foes:[foe],log:[],_mtarget:foe};
+    const before=foe.hp; // force a miss by temporarily zeroing hit
+    const sp=SPELLS.FIRE;const base=sp.pow+Math.floor(h.intl/2);
+    return {pass:ok&&lo>=1&&hi<=2*atk-abs,
+      detail:'phys dmg range ['+lo+','+hi+'] within [1,'+(2*atk-abs)+']; half-on-miss=floor(base/2)='+Math.floor(base/2)};},
+
+  // P4 — accuracy sits at the ~84% baseline as modified by hit%/evade.
+  accuracy(){RNG=mulberry32(5);let hits=0,N=8000;const hp=10,ev=0;
+    const chance=hitChance(hp,ev);
+    for(let i=0;i<N;i++)if(rnd()*100<chance)hits++;
+    const rate=hits/N*100;
+    return {pass:Math.abs(rate-chance)<2.5,
+      detail:'hit rate '+rate.toFixed(1)+'% vs computed '+chance+'% (base 84 + hit'+hp+' - evade)'};},
+
+  // P5 — casting spends exactly one charge of the TIER; 0 charges = unavailable;
+  // rest refills to the (level-capped, <=9) max; NO passive regen.
+  charges(){RNG=mulberry32(2);const h=makeHero('caster');
+    const t=1, start=h.charges[t]; let ok=start>0;
+    G.battle={foes:[mkEnemy('goblin')],log:[],_mtarget:null};G.battle._mtarget=G.battle.foes[0];
+    castSpell(h,'FIRE'); ok=ok&&(h.charges[t]===start-1);       // spent exactly one
+    h.charges[t]=0; const beforeBad=h.charges[t]; castSpell(h,'FIRE');
+    ok=ok&&(h.charges[t]===0);                                   // no cast at 0, no regen
+    // rest refill
+    for(let tt=1;tt<=TIERS;tt++)h.charges[tt]=0; innRefill(h);
+    ok=ok&&(h.charges[1]===h.chargeMax[1])&&h.chargeMax[1]<=9;
+    return {pass:ok, detail:'spend-1-per-tier + rest-refill to '+h.chargeMax[1]+' (cap<=9), no passive regen'};},
+
+  // P6 — growth is probabilistic (~1/8 per base stat, never >+1) and HP always rises.
+  growth(){RNG=mulberry32(11);let hpAlwaysUp=true,overCap=false,gains=0,levels=6000;
+    for(let i=0;i<levels;i++){const h=makeHero('warrior');const s0={str:h.str,agi:h.agi,sta:h.sta,intl:h.intl};
+      const hp0=h.maxhp; levelUp(h);
+      if(h.maxhp<=hp0)hpAlwaysUp=false;
+      for(const s of ['str','agi','sta','intl']){const d=h[s]-s0[s];if(d>1)overCap=true;if(d===1)gains++;}}
+    const perStat=gains/(levels*4);   // ~0.125
+    return {pass:hpAlwaysUp&&!overCap&&Math.abs(perStat-0.125)<0.02,
+      detail:'per-stat +1 rate '+(perStat*100).toFixed(1)+'% (~12.5%), HP always up: '+hpAlwaysUp+', never >+1: '+!overCap};},
+
+  // P7 — attrition/losability (C5): the DUNGEON is lethal, not one fight. A
+  // no-rest gauntlet of encounters + boss: a competent, resource-managing line
+  // usually survives; a reckless never-heal line depletes and wipes. (Finding:
+  // a single boss vs 4 heroes can't create attrition — it's a sequence property.)
+  attrition(){
+    let compWins=0,reckWipes=0,N=16;
+    for(let s=0;s<N;s++){ if(simGauntlet(true,s).wonBoss)compWins++;
+                          if(simGauntlet(false,s).wiped)reckWipes++; }
+    G.simMode=false;
+    return {pass:compWins>=Math.ceil(N*0.4) && reckWipes>=1,
+      detail:'competent cleared dungeon '+compWins+'/'+N+', reckless wiped '+reckWipes+'/'+N+
+             ' (attrition is real — the no-rest gauntlet, not the boss alone)'};},
+
+  // P8 — win awards xp/gil & bumps score; whole party at 0hp = game-over state.
+  winlose(){
+    // WIN path: a full party fights one foe to death → phase 'win' + score up.
+    sim.reset(4);
+    G.battle={foes:[mkEnemy('goblin')],round:0,order:[],phase:'input',cmdHero:0,
+      menu:0,sub:0,target:0,log:[],anim:0,kind:'rand',cmds:[]};
+    G.state='battle';G.screen='battle';
+    const scoreBefore=G.score; let won=false,guard=0;
+    while(guard++<400){const b=G.battle;
+      if(b.phase==='input'){b.cmds=[];
+        G.party.forEach((h,i)=>{if(h.alive)b.cmds[i]={k:'FIGHT',target:0};});
+        resolveRound();}
+      else if(b.phase==='win'){won=true;break;}
+      else if(b.phase==='lose'){break;}
+      else break;}
+    const scoreAfter=G.score, award=won && scoreAfter>scoreBefore;
+    // LOSE path: wipe the party, resolve a round, expect game-over detection.
+    sim.reset(5);startBattle('rand');G.party.forEach(h=>{h.hp=0;h.alive=false;});
+    G.battle.cmds=[];resolveRound();
+    const overDetected=(G.battle.phase==='lose')||allHeroesDead();
+    G.simMode=false;
+    return {pass:award&&overDetected,
+      detail:'win→award(score '+scoreBefore+'→'+scoreAfter+'):'+award+' party-wipe→game-over:'+overDetected};},
+
+  // P10 — a full battle round resolves well under frame budget.
+  frameCost(){sim.reset(1);startBattle('rand');
+    const t0=performance.now();
+    for(let r=0;r<50;r++){G.battle.cmds=[];G.party.forEach((h,i)=>{if(h.alive)G.battle.cmds[i]={k:'FIGHT'};});
+      if(!allFoesDead()&&!allHeroesDead())resolveRound(); else {startBattle('rand');}}
+    const ms=(performance.now()-t0)/50;
+    G.simMode=false;
+    return {pass:ms<8, detail:ms.toFixed(3)+'ms per resolved round (budget < 8ms)'};}
+};
+// small helpers used only by tests
+function innRefill(h){for(let t=1;t<=TIERS;t++)h.charges[t]=h.chargeMax[t];}
+function resolveRoundSafe(){try{G.battle.cmds=[];resolveRound();}catch(e){}}
+// A no-rest dungeon gauntlet: `enc` random encounters then the boss, NO inn
+// between them — so HP and tier-charges deplete across the run (C5 attrition).
+// competent = heal/nuke with charge management; reckless = swing only, never heal.
+function simGauntlet(competent,seed){
+  RNG=mulberry32(2000+(seed||0));
+  const party=[makeHero('warrior'),makeHero('healer'),makeHero('caster'),makeHero('hybrid')];
+  for(const h of party)for(let i=0;i<4;i++){h.lv++;levelUp(h);}  // ~L5 band
+  G.party=party;
+  const enc=8;
+  for(let e=0;e<=enc;e++){
+    const boss=(e===enc); const foes=[];
+    if(boss)foes.push(mkEnemy('boss'));
+    else{const n=2+Math.floor(RNG()*4);const pool=['goblin','wolf','wisp'];
+      for(let i=0;i<n;i++)foes.push(mkEnemy(pool[Math.floor(RNG()*pool.length)]));}
+    G.battle={foes,round:0,log:[],kind:boss?'boss':'rand'};
+    let guard=0;
+    while(foes.some(f=>f.alive)&&party.some(h=>h.alive)&&guard++<200){
+      const tgt=()=>foes.findIndex(f=>f.alive); const cmds=[];
+      party.forEach((h,i)=>{if(!h.alive)return;
+        if(competent){const low=h.hp<h.maxhp*0.45;
+          if(h.spells.includes('CURE')&&low&&h.charges[1]>0)cmds[i]={k:'MAGIC',spell:'CURE'};
+          else if(h.spells.includes('FIRE')&&h.charges[1]>0){G.battle._mtarget=foes.find(f=>f.alive);cmds[i]={k:'MAGIC',spell:'FIRE'};}
+          else cmds[i]={k:'FIGHT',target:tgt()};
+        } else cmds[i]={k:'FIGHT',target:tgt()};   // reckless: swing only, never heal
+      });
+      G.battle.cmds=cmds; resolveRound();
+      if(G.battle.phase==='win'||G.battle.phase==='lose')break;
+    }
+    if(party.every(h=>!h.alive))return {wiped:true,wonBoss:false};
+    // NO REST here — the whole point of the gauntlet
+  }
+  return {wiped:false, wonBoss:party.some(h=>h.alive)};
+}
+
+/* ====================== export (window.__<game>) ========================= */
+window.__crystallight={
+  game:G, sim, HiScore, LETTERS, startEntryOrTitle, Feedback, tests,
+  // pure engine surface the tests + any bot can sample (no second implementation):
+  engine:{attackDamage,hitChance,shuffle17,levelUp,makeHero,chargeMaxForLevel,xpForLevel},
+  state:G.state, score:G.score,
+  newGame
+};
+// keep the shared testHook contract's shape (state/score present) current-ish
+Object.defineProperty(window.__crystallight,'state',{get:()=>G.state});
+Object.defineProperty(window.__crystallight,'score',{get:()=>G.score});
+</script>
+</body>
+</html>

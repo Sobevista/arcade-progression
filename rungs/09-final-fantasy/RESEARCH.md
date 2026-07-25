@@ -93,10 +93,14 @@ Daniel's eyeball on the frames [A]):
 
 ---
 
-## Candidate JRPG genre-invariants (the trove deliverable — DRAFT for Daniel's ruling)
+## JRPG genre-invariants — APPROVED 2026-07-24 (Daniel: "invariants are good")
 
-*Proposed, not yet promoted. These are the "bones" the MVP must get right — the laws that make a
-JRPG a JRPG, distinct from the platformer laws. Daniel rules which enter INVARIANTS.md.*
+*The "bones" the MVP must get right — the laws that make a JRPG a JRPG, distinct from the
+platformer laws. **Approved as the rung-9 build-target spec** (the SCOPE's "under test" list is
+derived from these). They are NOT yet written into `INVARIANTS.md`: that file's law is
+earned-not-read (every line bought by a build going wrong, with evidence attached). These
+**graduate into the trove when the rung-9 build proves them in code** — a genre bone earns its
+INVARIANTS.md line the same way a platformer bone did. Until then they live here, approved.*
 
 - **JRPG-C1 — The battle is a menu, not an arcade.** Input is discrete command selection resolved
   over turns, not real-time dexterity. The screen serves information (HP/MP/status) first.
