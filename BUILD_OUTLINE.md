@@ -727,3 +727,18 @@ not an oversight. It should be revisited the moment either becomes true:
   fixes. North star (Daniel's): each genre's bones added to the trove drives toward
   an "NES-genre generator" — the low-error skeleton of a genre on demand, not the
   perfection.
+
+- **2026-07-25 — RUNG 9 (FINAL FANTASY / Crystallight) GRADUATED.** The 2026-07-24
+  NEXT ACTION above is now DONE and superseded. Mechanics suite P1-P10 9/9 all green
+  (each drives/samples the real engine), CONFORMANT, sprites redrawn and passing the
+  silhouette gate; overworld/town render clean, no console errors. Trove updated
+  (JRPG-C1..C6 genre invariants earned on graduation). Full detail:
+  `rungs/09-final-fantasy/RUN_LOG.md`. Recorded 2026-09-28 during the harness
+  FLEET_360 pass — the graduation existed in git + RUN_LOG but had never been written
+  back to this log, and Projects_Index carried a stale "rung 9 PARKED" line (now also
+  corrected).
+
+  **NEXT ACTION: rung 10, or drain the carried backlog** — releases.json still
+  advertises Invaders only (Daniel's pacing call on which rungs join the landing
+  page); feedback-contract rollout to rungs 2-4; the T9 bar; family playtests of
+  rungs 4-7. None is a fidelity-build blocker.
